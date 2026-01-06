@@ -23,7 +23,7 @@ export default function Signup() {
       password,
       options: {
         data: {
-          full_name: fullName, // This also stores the name in auth metadata as a backup
+          full_name: fullName, 
         }
       }
     });
@@ -35,9 +35,7 @@ export default function Signup() {
     }
 
     if (data.user) {
-      // 2. Create the Puritan Profile using UPSERT
-      // Upsert handles situations where a database trigger might have already 
-      // created a blank profile row for the user.
+      // 2. Create the Puritan Profile
       const { error: profileError } = await supabase
         .from('profiles')
         .upsert({ 
@@ -48,12 +46,24 @@ export default function Signup() {
 
       if (profileError) {
         console.error("Forge Profile Error:", profileError.message);
-        // If it fails here, it's usually because of Email Confirmation rules
-        alert("Account created! Please check your email to confirm and activate your Puritan profile.");
       } else {
+        // 3. SEND WELCOME EMAIL (Trigger API)
+        // We do this silently in the background
+        const firstName = fullName.split(' ')[0];
+        
+        await fetch('/api/send-welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            email: email, 
+            firstName: firstName 
+          }),
+        });
+
         alert("Welcome, Puritan! Your account has been forged.");
       }
       
+      // 4. Redirect to Dashboard
       router.push('/'); 
     }
     setLoading(false);
