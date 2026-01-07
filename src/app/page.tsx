@@ -558,7 +558,7 @@ export default function Home() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                     </span>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/90 drop-shadow-sm">Live Broadcast</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/90 drop-shadow-sm">Live Broadcast: 10PM</span>
                  </div>
                  <div>
                     <h2 className="text-3xl md:text-5xl font-black text-white leading-[0.9] tracking-tighter drop-shadow-md">{settings.live_topic}</h2>

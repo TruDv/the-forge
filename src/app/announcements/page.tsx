@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   ChevronLeft, Mic, Calendar, Clock, 
-  Search, Flame, Sparkles, Copy, Check
+  Search, Flame, Sparkles, Copy, Check,
+  Link as LinkIcon // <--- Import Link Icon
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,9 +15,7 @@ export default function AnnouncementArchives() {
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   
-  // Track local amen counts for instant UI updates
   const [amenCounts, setAmenCounts] = useState<{[key: string]: number}>({});
-  // Track which items are currently being "amen'd" for animation
   const [animatingIds, setAnimatingIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -28,7 +27,6 @@ export default function AnnouncementArchives() {
 
       if (data) {
         setAnnouncements(data);
-        // Initialize counts from database
         const counts: any = {};
         data.forEach((a: any) => counts[a.id] = a.amen_count || 0);
         setAmenCounts(counts);
@@ -45,26 +43,17 @@ export default function AnnouncementArchives() {
   };
 
   const handleAmen = async (id: string) => {
-    // 1. Optimistic UI Update (Instant Feedback)
     const currentCount = amenCounts[id] || 0;
     const newCount = currentCount + 1;
-    
-    // Update local state immediately
     setAmenCounts(prev => ({ ...prev, [id]: newCount }));
-    
-    // Trigger animation
     setAnimatingIds(prev => [...prev, id]);
     setTimeout(() => {
-        setAnimatingIds(prev => prev.filter(pid => pid !== id));
+       setAnimatingIds(prev => prev.filter(pid => pid !== id));
     }, 500);
 
-    // 2. Call the Secure Database Function
-    const { error } = await supabase
-      .rpc('increment_amen', { row_id: id });
-
+    const { error } = await supabase.rpc('increment_amen', { row_id: id });
     if (error) {
       console.error("Error receiving charge:", error);
-      // Revert count if it failed
       setAmenCounts(prev => ({ ...prev, [id]: currentCount }));
     }
   };
@@ -174,6 +163,19 @@ export default function AnnouncementArchives() {
                       <p className="text-base md:text-lg font-serif italic text-slate-700 leading-relaxed pr-4">
                         "{announcement.content}"
                       </p>
+                      
+                      {/* --- NEW LINK SECTION --- */}
+                      {announcement.link && (
+                        <a 
+                          href={announcement.link} 
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold uppercase tracking-wide hover:bg-indigo-100 transition-colors"
+                        >
+                          <LinkIcon size={14} /> 
+                          Attached Resource / Read More
+                        </a>
+                      )}
                     </div>
 
                     <div className="mt-6 pt-5 border-t border-slate-50 flex justify-between items-center">
@@ -184,26 +186,26 @@ export default function AnnouncementArchives() {
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Released by Puritan Charles</span>
                       </div>
 
-                      {/* AMEN / RECEIVE BUTTON (UPDATED STYLES) */}
+                      {/* AMEN / RECEIVE BUTTON */}
                       <button 
                         onClick={() => handleAmen(announcement.id)}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all active:scale-95 select-none
                           ${isAnimating 
-                            ? 'bg-orange-100 border-orange-300 text-orange-700 scale-110' // Animating state (pop)
+                            ? 'bg-orange-100 border-orange-300 text-orange-700 scale-110' 
                             : count > 0 
-                              ? 'bg-orange-50/50 border-orange-200 text-orange-600' // Persistent active state
-                              : 'bg-white border-slate-200 text-slate-500 hover:border-orange-200 hover:text-orange-500' // Default state
+                              ? 'bg-orange-50/50 border-orange-200 text-orange-600' 
+                              : 'bg-white border-slate-200 text-slate-500 hover:border-orange-200 hover:text-orange-500' 
                           }
                         `}
                       >
-                         <Flame 
+                          <Flame 
                             size={14} 
                             className={`transition-transform duration-300 ${isAnimating ? 'scale-125' : ''}`} 
                             fill={count > 0 ? "currentColor" : "none"}
-                         />
-                         <span className="text-[10px] font-black uppercase tracking-wider">
-                           {count > 0 ? `${count} Amens` : 'Receive'}
-                         </span>
+                          />
+                          <span className="text-[10px] font-black uppercase tracking-wider">
+                            {count > 0 ? `${count} Amens` : 'Receive'}
+                          </span>
                       </button>
                     </div>
                   </div>

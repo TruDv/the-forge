@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { Heart, MessageCircle, Send, Star, User as UserIcon } from 'lucide-react';
 
 export default function PrayerPage() {
@@ -34,7 +34,6 @@ export default function PrayerPage() {
   }
 
   async function fetchPrayers() {
-    // 1. Try to fetch with Profile Join
     let query = supabase
       .from('prayers')
       .select(`
@@ -52,24 +51,14 @@ export default function PrayerPage() {
 
     const { data: prayerData, error } = await query;
     
-    // 2. Fallback: If the Join fails, fetch data without the join so the screen isn't blank
     if (error) {
-      console.warn("Join failed, fetching simple list:", error.message);
-      const { data: simpleData } = await supabase
-        .from('prayers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: simpleData } = await supabase.from('prayers').select('*').order('created_at', { ascending: false });
       if (simpleData) setPrayers(simpleData);
     } else if (prayerData) {
       setPrayers(prayerData);
       
-      // 3. Fetch replies for the loaded prayers
       const prayerIds = prayerData.map(p => p.id);
-      const { data: replyData } = await supabase
-        .from('prayer_replies')
-        .select('*')
-        .in('prayer_id', prayerIds)
-        .order('created_at', { ascending: true });
+      const { data: replyData } = await supabase.from('prayer_replies').select('*').in('prayer_id', prayerIds).order('created_at', { ascending: true });
 
       if (replyData) {
         const grouped = replyData.reduce((acc: any, reply) => {
@@ -131,6 +120,7 @@ export default function PrayerPage() {
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10 bg-slate-50 min-h-screen">
+      
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
         <div>
@@ -158,9 +148,9 @@ export default function PrayerPage() {
       {/* Feed */}
       <div className="space-y-6">
         {prayers.map((p) => {
-          // Robust Profile Logic: use profile data if available, otherwise use legacy data
           const nameToDisplay = p.profiles?.full_name || p.author_name || 'Puritan Member';
           const avatarToDisplay = p.profiles?.avatar_url;
+          const isMyPrayer = user?.id === p.user_id; // Check if I own this prayer
 
           return (
             <div key={p.id} className={`bg-white rounded-[32px] p-8 border transition-all ${p.is_testimony ? 'border-orange-200 shadow-orange-100 shadow-xl' : 'border-slate-100 shadow-sm'}`}>
@@ -183,10 +173,23 @@ export default function PrayerPage() {
                   </div>
                 </div>
 
-                <button onClick={() => toggleTestimony(p.id, p.is_testimony)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${p.is_testimony ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400 hover:bg-orange-50 hover:text-orange-500'}`}>
-                  <Star size={14} fill={p.is_testimony ? "currentColor" : "none"} />
-                  {p.is_testimony ? "Praise Report" : "Answered"}
-                </button>
+                {/* --- PERMISSION LOGIC FOR BUTTON --- */}
+                {isMyPrayer ? (
+                  // I am the author: I can click to toggle
+                  <button onClick={() => toggleTestimony(p.id, p.is_testimony)} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${p.is_testimony ? 'bg-orange-100 text-orange-600' : 'bg-slate-50 text-slate-400 hover:bg-orange-50 hover:text-orange-500'}`}>
+                    <Star size={14} fill={p.is_testimony ? "currentColor" : "none"} />
+                    {p.is_testimony ? "Praise Report" : "Answered?"}
+                  </button>
+                ) : (
+                  // I am NOT the author
+                  p.is_testimony && (
+                    // Show Read-Only Badge if it is a testimony
+                    <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase bg-orange-100 text-orange-600 cursor-default">
+                      <Star size={14} fill="currentColor" />
+                      Praise Report
+                    </div>
+                  )
+                )}
               </div>
               
               <p className={`leading-relaxed text-lg font-serif italic ${p.is_testimony ? 'text-slate-900' : 'text-slate-600'}`}>
