@@ -5,21 +5,27 @@ import { supabase } from '@/lib/supabase';
 import { 
   Trash2, Lock, Loader2, Globe, Mic, 
   LogOut, Send, Sparkles, MessageSquare, 
-  History, Video, Plus, Edit2, MessageCircle
+  History, Video, Plus, Edit2, MessageCircle,
+  Users, Ban, CheckCircle, Search
 } from 'lucide-react';
 import UploadModal from '@/components/UploadModal';
 
 export default function AdminPortal() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
+  
+  // Data States
   const [prayers, setPrayers] = useState<any[]>([]);
   const [archives, setArchives] = useState<any[]>([]);
   const [mediaList, setMediaList] = useState<any[]>([]);
+  const [userList, setUserList] = useState<any[]>([]); // User List State
+  
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [userSearch, setUserSearch] = useState(''); // User Search State
   
   // Tab State
-  const [activeTab, setActiveTab] = useState<'prayers' | 'archives' | 'media'>('prayers');
+  const [activeTab, setActiveTab] = useState<'prayers' | 'archives' | 'media' | 'users'>('prayers');
 
   // Upload/Edit Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -29,18 +35,18 @@ export default function AdminPortal() {
   const [newCharge, setNewCharge] = useState('');
   const [isPostingCharge, setIsPostingCharge] = useState(false);
 
-  // Settings State (Updated with chat_topic)
+  // Settings State
   const [settings, setSettings] = useState({
     live_meet_link: '', 
     live_topic: '', 
     podcast_title: '', 
     podcast_description: '', 
     podcast_image: '', 
-    podcast_link: '',
-    chat_topic: '' // <--- Added for Upper Room
+    podcast_link: '', 
+    chat_topic: ''
   });
 
-  const MASTER_PIN = "1234"; 
+  const MASTER_PIN = "198750##"; 
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,13 +61,33 @@ export default function AdminPortal() {
 
   const fetchAdminData = async () => {
     setIsLoading(true);
+    
+    // Fetch Prayers
     const { data: prayerData } = await supabase.from('prayers').select('*').order('created_at', { ascending: false });
+    
+    // Fetch Archives
     const { data: archiveData } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+    
+    // Fetch Media
     const { data: mediaData } = await supabase.from('media').select('*').order('created_at', { ascending: false });
+    
+    // FETCH USERS (FIXED: Ordered by name to avoid crashing on missing dates)
+    const { data: userData, error: userError } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('full_name', { ascending: true });
+
+    if (userError) {
+      console.error("Error loading users:", userError);
+    } else if (userData) {
+      console.log("Users loaded:", userData.length); // Check console to confirm
+      setUserList(userData);
+    }
 
     if (prayerData) setPrayers(prayerData);
     if (archiveData) setArchives(archiveData);
     if (mediaData) setMediaList(mediaData);
+    
     setIsLoading(false);
   };
 
@@ -99,17 +125,50 @@ export default function AdminPortal() {
     }
   };
 
-  // Open modal in Edit Mode
-  const handleEditMedia = (item: any) => {
-    setEditingItem(item);
-    setIsUploadModalOpen(true);
+  // --- USER MANAGEMENT FUNCTIONS ---
+
+  const toggleUserBlock = async (userId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_blocked: !currentStatus })
+      .eq('id', userId);
+
+    if (!error) {
+      setUserList(prev => prev.map(u => u.id === userId ? { ...u, is_blocked: !currentStatus } : u));
+      setStatus(currentStatus ? 'User Unblocked' : 'User Blocked');
+      setTimeout(() => setStatus(''), 3000);
+    } else {
+      console.error("Block Error:", error);
+    }
   };
 
-  // Open modal in Create Mode
-  const handleCreateMedia = () => {
-    setEditingItem(null);
-    setIsUploadModalOpen(true);
+  const hardDeleteUser = async (userId: string) => {
+    if (!confirm("DANGER: This will permanently delete the user and their login. Are you sure?")) return;
+    
+    // Call the RPC function we created in SQL
+    const { error } = await supabase.rpc('delete_user_by_id', { target_user_id: userId });
+    
+    if (error) {
+      alert("Error: " + error.message);
+    } else {
+      setUserList(prev => prev.filter(u => u.id !== userId));
+      setStatus('User Permanently Deleted');
+      setTimeout(() => setStatus(''), 3000);
+    }
   };
+
+  // Filter Users Logic
+  const filteredUsers = userList.filter(u => 
+    (u.full_name?.toLowerCase() || '').includes(userSearch.toLowerCase()) ||
+    (u.email?.toLowerCase() || '').includes(userSearch.toLowerCase())
+  );
+
+
+  // --- RENDER ---
+  
+  // Handlers for Media
+  const handleEditMedia = (item: any) => { setEditingItem(item); setIsUploadModalOpen(true); };
+  const handleCreateMedia = () => { setEditingItem(null); setIsUploadModalOpen(true); };
 
   if (!isAuthenticated) {
     return (
@@ -181,24 +240,14 @@ export default function AdminPortal() {
               </div>
             </div>
 
-            {/* UPPER ROOM SETTINGS (NEW) */}
+            {/* UPPER ROOM SETTINGS */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-900">
                 <MessageCircle size={20}/> Upper Room Focus
               </h2>
               <div className="space-y-4">
-                <textarea 
-                  placeholder="What should the Puritans discuss?" 
-                  value={settings.chat_topic} 
-                  onChange={(e) => setSettings({...settings, chat_topic: e.target.value})} 
-                  className="w-full p-3 bg-slate-50 rounded-xl outline-none text-sm h-20 resize-none font-medium text-slate-700" 
-                />
-                <button 
-                  onClick={() => updateSetting('chat_topic', settings.chat_topic)} 
-                  className="w-full bg-indigo-900 text-white py-3 rounded-xl font-bold text-xs uppercase"
-                >
-                  Set Room Topic
-                </button>
+                <textarea placeholder="What should the Puritans discuss?" value={settings.chat_topic} onChange={(e) => setSettings({...settings, chat_topic: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl outline-none text-sm h-20 resize-none font-medium text-slate-700" />
+                <button onClick={() => updateSetting('chat_topic', settings.chat_topic)} className="w-full bg-indigo-900 text-white py-3 rounded-xl font-bold text-xs uppercase">Set Room Topic</button>
               </div>
             </div>
 
@@ -233,6 +282,10 @@ export default function AdminPortal() {
                <button onClick={() => setActiveTab('media')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'media' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>
                  <Video size={14} /> Media
                </button>
+               {/* USERS TAB */}
+               <button onClick={() => setActiveTab('users')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>
+                 <Users size={14} /> People
+               </button>
              </div>
 
              <div className="overflow-y-auto p-4 space-y-2 flex-1">
@@ -265,39 +318,79 @@ export default function AdminPortal() {
                    {/* MEDIA TAB */}
                    {activeTab === 'media' && (
                      <div className="space-y-4">
-                       <button 
-                         onClick={handleCreateMedia}
-                         className="w-full border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 py-4 rounded-2xl text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase flex items-center justify-center gap-2 transition-all"
-                       >
+                       <button onClick={handleCreateMedia} className="w-full border-2 border-dashed border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 py-4 rounded-2xl text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase flex items-center justify-center gap-2 transition-all">
                          <Plus size={16} /> Upload New Video
                        </button>
-
                        {mediaList.map((m) => (
                          <div key={m.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center group border border-slate-100">
                            <div className="flex items-center gap-3 overflow-hidden">
-                             {/* Colorful Icons */}
-                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md
-                               ${m.type === 'video' ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}
-                             `}>
+                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md ${m.type === 'video' ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
                                {m.type === 'video' ? <Video size={16}/> : <Mic size={16}/>}
                              </div>
-                             
                              <div className="flex-1 min-w-0">
                                <p className="text-xs font-bold text-slate-900 truncate">{m.title}</p>
                                <p className="text-[10px] text-slate-500 truncate">{m.author || "The Forge"}</p>
                              </div>
                            </div>
-                           
                            <div className="flex gap-1">
-                             <button onClick={() => handleEditMedia(m)} className="text-slate-300 hover:text-indigo-600 p-2 transition-colors">
-                               <Edit2 size={16}/>
-                             </button>
-                             <button onClick={() => deleteItem('media', m.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors">
-                               <Trash2 size={16}/>
-                             </button>
+                             <button onClick={() => handleEditMedia(m)} className="text-slate-300 hover:text-indigo-600 p-2 transition-colors"><Edit2 size={16}/></button>
+                             <button onClick={() => deleteItem('media', m.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><Trash2 size={16}/></button>
                            </div>
                          </div>
                        ))}
+                     </div>
+                   )}
+
+                   {/* USERS TAB (Showing List) */}
+                   {activeTab === 'users' && (
+                     <div className="space-y-4">
+                        <div className="relative">
+                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                           <input 
+                             placeholder="Search Name or Email..." 
+                             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs outline-none focus:border-indigo-300 transition-colors"
+                             value={userSearch}
+                             onChange={(e) => setUserSearch(e.target.value)}
+                           />
+                        </div>
+
+                        {filteredUsers.length > 0 ? (
+                          filteredUsers.map((u) => (
+                             <div key={u.id} className={`p-4 rounded-2xl flex justify-between items-center group border transition-all ${u.is_blocked ? 'bg-rose-50 border-rose-100 opacity-75' : 'bg-slate-50 border-slate-100'}`}>
+                               <div className="flex items-center gap-3 overflow-hidden">
+                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black uppercase flex-shrink-0 ${u.is_blocked ? 'bg-rose-200 text-rose-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                   {u.full_name?.charAt(0) || '?'}
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                   <p className={`text-xs font-bold truncate ${u.is_blocked ? 'text-rose-900 line-through' : 'text-slate-900'}`}>{u.full_name || 'Unnamed'}</p>
+                                   <p className="text-[9px] text-slate-500 truncate">{u.email || 'No Email'}</p>
+                                 </div>
+                               </div>
+                               
+                               <div className="flex gap-1">
+                                 {/* BLOCK TOGGLE */}
+                                 <button 
+                                   onClick={() => toggleUserBlock(u.id, u.is_blocked)} 
+                                   className={`p-2 transition-colors rounded-lg ${u.is_blocked ? 'text-emerald-500 hover:bg-emerald-100' : 'text-slate-300 hover:text-orange-500 hover:bg-orange-50'}`}
+                                   title={u.is_blocked ? "Unblock User" : "Block User"}
+                                 >
+                                   {u.is_blocked ? <CheckCircle size={16}/> : <Ban size={16}/>}
+                                 </button>
+
+                                 {/* HARD DELETE */}
+                                 <button 
+                                   onClick={() => hardDeleteUser(u.id)} 
+                                   className="text-slate-300 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-lg transition-colors"
+                                   title="Permanently Delete"
+                                 >
+                                   <Trash2 size={16}/>
+                                 </button>
+                               </div>
+                             </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-slate-400 text-xs italic">No users found.</div>
+                        )}
                      </div>
                    )}
                  </>
