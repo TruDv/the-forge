@@ -13,6 +13,11 @@ export default function AnnouncementArchives() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // Track local amen counts for instant UI updates
+  const [amenCounts, setAmenCounts] = useState<{[key: string]: number}>({});
+  // Track which items are currently being "amen'd" for animation
+  const [animatingIds, setAnimatingIds] = useState<string[]>([]);
 
   useEffect(() => {
     async function fetchArchives() {
@@ -21,7 +26,13 @@ export default function AnnouncementArchives() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (data) setAnnouncements(data);
+      if (data) {
+        setAnnouncements(data);
+        // Initialize counts from database
+        const counts: any = {};
+        data.forEach((a: any) => counts[a.id] = a.amen_count || 0);
+        setAmenCounts(counts);
+      }
       setLoading(false);
     }
     fetchArchives();
@@ -31,6 +42,31 @@ export default function AnnouncementArchives() {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleAmen = async (id: string) => {
+    // 1. Optimistic UI Update (Instant Feedback)
+    const currentCount = amenCounts[id] || 0;
+    const newCount = currentCount + 1;
+    
+    // Update local state immediately
+    setAmenCounts(prev => ({ ...prev, [id]: newCount }));
+    
+    // Trigger animation
+    setAnimatingIds(prev => [...prev, id]);
+    setTimeout(() => {
+        setAnimatingIds(prev => prev.filter(pid => pid !== id));
+    }, 500);
+
+    // 2. Call the Secure Database Function
+    const { error } = await supabase
+      .rpc('increment_amen', { row_id: id });
+
+    if (error) {
+      console.error("Error receiving charge:", error);
+      // Revert count if it failed
+      setAmenCounts(prev => ({ ...prev, [id]: currentCount }));
+    }
   };
 
   const filtered = announcements.filter(a => 
@@ -88,7 +124,11 @@ export default function AnnouncementArchives() {
 
           <div className="space-y-6">
             {filtered.length > 0 ? (
-              filtered.map((announcement) => (
+              filtered.map((announcement) => {
+                const count = amenCounts[announcement.id] || 0;
+                const isAnimating = animatingIds.includes(announcement.id);
+
+                return (
                 <div key={announcement.id} className="relative pl-14 group animate-in fade-in slide-in-from-bottom-4 duration-500">
                   
                   {/* Timeline Icon */}
@@ -143,10 +183,32 @@ export default function AnnouncementArchives() {
                         </div>
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Released by Puritan Charles</span>
                       </div>
+
+                      {/* AMEN / RECEIVE BUTTON (UPDATED STYLES) */}
+                      <button 
+                        onClick={() => handleAmen(announcement.id)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all active:scale-95 select-none
+                          ${isAnimating 
+                            ? 'bg-orange-100 border-orange-300 text-orange-700 scale-110' // Animating state (pop)
+                            : count > 0 
+                              ? 'bg-orange-50/50 border-orange-200 text-orange-600' // Persistent active state
+                              : 'bg-white border-slate-200 text-slate-500 hover:border-orange-200 hover:text-orange-500' // Default state
+                          }
+                        `}
+                      >
+                         <Flame 
+                            size={14} 
+                            className={`transition-transform duration-300 ${isAnimating ? 'scale-125' : ''}`} 
+                            fill={count > 0 ? "currentColor" : "none"}
+                         />
+                         <span className="text-[10px] font-black uppercase tracking-wider">
+                           {count > 0 ? `${count} Amens` : 'Receive'}
+                         </span>
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))
+              )})
             ) : (
               <div className="ml-14 text-center py-20 bg-white rounded-[32px] border border-dashed border-slate-200">
                 <p className="text-slate-400 font-medium italic text-sm">The silence is deep. No archives match your search.</p>
