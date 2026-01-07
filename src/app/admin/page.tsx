@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Trash2, Lock, Loader2, Globe, Mic, 
   LogOut, Send, Sparkles, MessageSquare, 
-  History, Video, Plus, Edit2 // <--- Added Edit2 Icon
+  History, Video, Plus, Edit2, MessageCircle
 } from 'lucide-react';
 import UploadModal from '@/components/UploadModal';
 
@@ -23,18 +23,24 @@ export default function AdminPortal() {
 
   // Upload/Edit Modal State
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null); // <--- New State for Editing
+  const [editingItem, setEditingItem] = useState<any>(null); 
 
   // The Oracle State
   const [newCharge, setNewCharge] = useState('');
   const [isPostingCharge, setIsPostingCharge] = useState(false);
 
-  // Settings State
+  // Settings State (Updated with chat_topic)
   const [settings, setSettings] = useState({
-    live_meet_link: '', live_topic: '', podcast_title: '', podcast_description: '', podcast_image: '', podcast_link: ''
+    live_meet_link: '', 
+    live_topic: '', 
+    podcast_title: '', 
+    podcast_description: '', 
+    podcast_image: '', 
+    podcast_link: '',
+    chat_topic: '' // <--- Added for Upper Room
   });
 
-  const MASTER_PIN = "198750##"; 
+  const MASTER_PIN = "1234"; 
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +134,7 @@ export default function AdminPortal() {
         isOpen={isUploadModalOpen} 
         onClose={() => { setIsUploadModalOpen(false); setEditingItem(null); }} 
         onUploadSuccess={() => { fetchAdminData(); }} 
-        initialData={editingItem} // <--- Pass the item to be edited
+        initialData={editingItem} 
       />
 
       <div className="max-w-6xl mx-auto space-y-8">
@@ -151,8 +157,10 @@ export default function AdminPortal() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* LEFT COLUMN: LIVE & PODCAST */}
+          {/* LEFT COLUMN: LIVE & PODCAST & UPPER ROOM */}
           <div className="lg:col-span-1 space-y-6">
+            
+            {/* Live Settings */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600"><Globe size={20}/> Live Meet</h2>
               <div className="space-y-4">
@@ -162,6 +170,7 @@ export default function AdminPortal() {
               </div>
             </div>
 
+            {/* Podcast Settings */}
             <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-orange-600"><Mic size={20}/> Podcast</h2>
               <div className="space-y-4">
@@ -171,6 +180,28 @@ export default function AdminPortal() {
                 <button onClick={() => { updateSetting('podcast_title', settings.podcast_title); updateSetting('podcast_description', settings.podcast_description); updateSetting('podcast_link', settings.podcast_link); }} className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold text-xs uppercase">Update Podcast</button>
               </div>
             </div>
+
+            {/* UPPER ROOM SETTINGS (NEW) */}
+            <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+              <h2 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-900">
+                <MessageCircle size={20}/> Upper Room Focus
+              </h2>
+              <div className="space-y-4">
+                <textarea 
+                  placeholder="What should the Puritans discuss?" 
+                  value={settings.chat_topic} 
+                  onChange={(e) => setSettings({...settings, chat_topic: e.target.value})} 
+                  className="w-full p-3 bg-slate-50 rounded-xl outline-none text-sm h-20 resize-none font-medium text-slate-700" 
+                />
+                <button 
+                  onClick={() => updateSetting('chat_topic', settings.chat_topic)} 
+                  className="w-full bg-indigo-900 text-white py-3 rounded-xl font-bold text-xs uppercase"
+                >
+                  Set Room Topic
+                </button>
+              </div>
+            </div>
+
           </div>
 
           {/* CENTER COLUMN: THE ORACLE */}
@@ -231,7 +262,7 @@ export default function AdminPortal() {
                      </div>
                    ))}
 
-                   {/* MEDIA TAB (Updated with Edit Button & Colors) */}
+                   {/* MEDIA TAB */}
                    {activeTab === 'media' && (
                      <div className="space-y-4">
                        <button 
@@ -258,11 +289,9 @@ export default function AdminPortal() {
                            </div>
                            
                            <div className="flex gap-1">
-                             {/* Edit Button */}
                              <button onClick={() => handleEditMedia(m)} className="text-slate-300 hover:text-indigo-600 p-2 transition-colors">
                                <Edit2 size={16}/>
                              </button>
-                             {/* Delete Button */}
                              <button onClick={() => deleteItem('media', m.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors">
                                <Trash2 size={16}/>
                              </button>

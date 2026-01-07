@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import UpperRoom from '@/components/UpperRoom';
 
 export default function Home() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState(''); 
   const [todayFocus, setTodayFocus] = useState<any>(null);
   const [fastDay, setFastDay] = useState<number>(1);
+  const [latestVideo, setLatestVideo] = useState<any>(null); // <--- NEW STATE FOR VIDEO
   
   // Sidebar Victory Widget State
   const [latestTestimony, setLatestTestimony] = useState<any>(null);
@@ -41,12 +43,12 @@ export default function Home() {
 
   // Dynamic Settings (Podcast, Live Link, etc.)
   const [settings, setSettings] = useState({
-    live_meet_link: 'https://meet.google.com/abc-defg-hij',
-    live_topic: 'Walking in Purpose',
-    podcast_title: 'Understanding Grace',
-    podcast_description: 'In this episode, we dive deep into the theological foundations of grace...',
-    podcast_image: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400',
-    podcast_link: 'https://spotify.com'
+    live_meet_link: '',
+    live_topic: '',
+    podcast_title: '',
+    podcast_description: '',
+    podcast_image: '',
+    podcast_link: ''
   });
 
   // Prayer Interaction State
@@ -72,6 +74,18 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, [router]);
 
+  // --- HELPERS (For Video Thumbnail) ---
+  const getYoutubeId = (url: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url?.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const getThumbnail = (url: string) => {
+    const id = getYoutubeId(url);
+    return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=800";
+  };
+
   // --- DATA FETCHING FUNCTIONS ---
 
   const fetchAnnouncement = async () => {
@@ -83,6 +97,18 @@ export default function Home() {
       .maybeSingle();
     
     if (data) setAnnouncement(data);
+  };
+
+  // <--- NEW: FETCH LATEST VIDEO --->
+  const fetchLatestVideo = async () => {
+    const { data } = await supabase
+      .from('media')
+      .select('*')
+      .eq('type', 'video')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) setLatestVideo(data);
   };
 
   const fetchLatestPrayers = async () => {
@@ -180,6 +206,7 @@ export default function Home() {
     checkUser();
     fetchLatestPrayers();
     fetchLatestTestimony();
+    fetchLatestVideo(); // <--- Call here
     fetchBibleVerse();
     fetchSettings();
     fetchAnnouncement();
@@ -336,7 +363,7 @@ export default function Home() {
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             {/* Backdrop */}
             <div 
-              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity" 
+              className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm transition-opacity" 
               onClick={() => setIsAboutModalOpen(false)}
             />
             
@@ -360,7 +387,7 @@ export default function Home() {
               {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-8 md:p-12 space-y-10 scrollbar-thin scrollbar-thumb-slate-200">
                 
-                {/* Section 1: The Problem - Source: 2-3 */}
+                {/* Section 1: The Challenge */}
                 <section>
                   <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                     <span className="text-orange-500">01.</span> The Challenge of Faith
@@ -375,7 +402,7 @@ export default function Home() {
 
                 <div className="h-px bg-slate-100 w-full" />
 
-                {/* Section 2: The Process (The Forge) - Source: 10, 12, 25, 31 */}
+                {/* Section 2: Forged in Fire */}
                 <section>
                   <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                     <span className="text-orange-500">02.</span> Forged in Fire
@@ -405,7 +432,7 @@ export default function Home() {
 
                 <div className="h-px bg-slate-100 w-full" />
 
-                {/* Section 3: The Choice - Source: 35-41 */}
+                {/* Section 3: The Mandate */}
                 <section>
                   <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                     <span className="text-orange-500">03.</span> The Mandate
@@ -418,7 +445,7 @@ export default function Home() {
                   </p>
                 </section>
 
-                {/* Section 4: The Promise - Source: 97, 87 */}
+                {/* Section 4: The Promise */}
                 <section className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                   <h3 className="text-xl font-black text-orange-900 mb-3">The Promise</h3>
                   <p className="text-orange-900/80 italic font-serif leading-relaxed mb-4">
@@ -463,53 +490,34 @@ export default function Home() {
         </button>
       </div>
 
-      {/* --- THE SPLIT PERSONALITY ORACLE BAR (Fixed Desktop Expansion) --- */}
+      {/* Ticker */}
       {announcement && (
         <div className="mb-6 group">
           <div className="bg-slate-900 text-white rounded-2xl overflow-hidden shadow-lg border border-white/5 flex flex-col md:flex-row md:items-stretch transition-all duration-300">
             
-            {/* 1. HEADER (Label + Mobile Link) */}
+            {/* Header */}
             <div className="flex items-center justify-between w-full md:w-auto border-b border-white/10 md:border-b-0 md:border-r border-white/5 bg-slate-900">
-              
-              {/* Label - Stretches to fill height on desktop */}
               <div className="bg-orange-600 px-4 py-3 flex items-center gap-2 h-full">
                 <Mic size={14} className="animate-pulse text-white" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-white">Announcements</span>
               </div>
-
-              {/* Mobile Archives Button */}
-              <Link 
-                href="/announcements" 
-                className="md:hidden pr-4 pl-6 py-3 flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
-              >
+              <Link href="/announcements" className="md:hidden pr-4 pl-6 py-3 flex items-center gap-2 text-orange-400">
                 <span className="text-[9px] font-black uppercase tracking-tighter">Archives</span>
                 <ChevronRight size={14} />
               </Link>
             </div>
 
-            {/* 2. CONTENT SECTION */}
-            {/* Note: py-3 applied everywhere now. No more md:py-0. */}
+            {/* Content */}
             <div className="flex-1 px-4 py-3 flex items-center overflow-hidden bg-slate-900">
-              <p className="text-xs font-medium italic text-slate-300 w-full
-                line-clamp-2                       {/* Mobile: strictly 2 lines */}
-                md:line-clamp-none                 {/* Desktop: remove line clamp limits */}
-                md:whitespace-nowrap md:truncate   {/* Desktop Default: Single line */}
-                md:group-hover:whitespace-normal   {/* Desktop Hover: Expand fully */}
-                transition-all duration-300 leading-relaxed"
-              >
+              <p className="text-xs font-medium italic text-slate-300 w-full line-clamp-2 md:line-clamp-none md:whitespace-nowrap md:truncate md:group-hover:whitespace-normal transition-all duration-300 leading-relaxed">
                 "{announcement.content}"
               </p>
             </div>
 
-            {/* 3. DESKTOP BUTTON */}
-            <Link 
-              href="/announcements" 
-              className="hidden md:flex px-4 py-3 border-l border-white/10 hover:bg-white/5 transition-colors flex-shrink-0 items-center bg-slate-900"
-            >
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] font-black uppercase tracking-tighter text-orange-400">Archives</span>
-                <ChevronRight size={14} className="text-orange-400" />
-              </div>
+            {/* Desktop Link */}
+            <Link href="/announcements" className="hidden md:flex px-4 py-3 border-l border-white/10 hover:bg-white/5 transition-colors flex-shrink-0 items-center bg-slate-900">
+              <span className="text-[10px] font-black uppercase tracking-tighter text-orange-400">Archives</span>
+              <ChevronRight size={14} className="text-orange-400" />
             </Link>
           </div>
         </div>
@@ -518,13 +526,14 @@ export default function Home() {
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          {/* Daily Verse Section */}
+          
+          {/* Daily Verse */}
           <div className="bg-gradient-to-br from-indigo-50 to-white rounded-3xl p-8 border border-indigo-100 shadow-sm relative overflow-hidden group">
             <Quote className="absolute -top-4 -left-4 w-24 h-24 text-indigo-200/30 -rotate-12" />
             <div className="relative z-10">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500">Daily Manna</span>
-                <button onClick={handleCopyVerse} className="p-2 hover:bg-white rounded-full transition-colors text-slate-400">
+                <button onClick={handleCopyVerse} className="p-2 hover:bg-white rounded-full text-slate-400">
                   {copied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
                 </button>
               </div>
@@ -537,22 +546,13 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Live Section (Modern Redesign) */}
+          {/* Live Section */}
           <div className="relative rounded-[2.5rem] overflow-hidden bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-700 shadow-2xl group border border-white/10">
-            
-            {/* --- Background Effects --- */}
-            {/* 1. Large glow top right */}
             <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-pink-500/30 rounded-full blur-3xl pointer-events-none mix-blend-screen" />
-            {/* 2. Large glow bottom left */}
             <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-64 h-64 bg-indigo-400/30 rounded-full blur-3xl pointer-events-none mix-blend-screen" />
-            {/* 3. Grid/Noise Overlay for texture */}
-            <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] pointer-events-none mix-blend-overlay" />
-
-            {/* --- Content --- */}
+            
             <div className="relative z-10 p-8 md:p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              
               <div className="space-y-4 max-w-lg">
-                 {/* Pill Badge with Pulse */}
                  <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full shadow-inner">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -560,37 +560,22 @@ export default function Home() {
                     </span>
                     <span className="text-[10px] font-black uppercase tracking-widest text-white/90 drop-shadow-sm">Live Broadcast</span>
                  </div>
-
-                 {/* Topic Title */}
                  <div>
-                   <h2 className="text-3xl md:text-5xl font-black text-white leading-[0.9] tracking-tighter drop-shadow-md">
-                     {settings.live_topic}
-                   </h2>
-                   <p className="text-indigo-200 font-medium mt-3 text-xs md:text-sm flex items-center gap-2 uppercase tracking-wide">
-                     <Video size={14} className="text-pink-400" /> 
-                     Streaming via Google Meet
-                   </p>
+                    <h2 className="text-3xl md:text-5xl font-black text-white leading-[0.9] tracking-tighter drop-shadow-md">{settings.live_topic}</h2>
+                    <p className="text-indigo-200 font-medium mt-3 text-xs md:text-sm flex items-center gap-2 uppercase tracking-wide">
+                      <Video size={14} className="text-pink-400" /> Streaming via Google Meet
+                    </p>
                  </div>
               </div>
-
-              {/* Shiny Action Button */}
-              <a
-                href={settings.live_meet_link}
-                target="_blank"
-                className="group/btn relative bg-white text-indigo-950 px-8 py-5 rounded-2xl font-black text-xs md:text-sm uppercase tracking-wider hover:bg-indigo-50 transition-all shadow-xl shadow-indigo-900/20 flex items-center gap-3 overflow-hidden"
-              >
-                {/* Button Shine Effect */}
+              <a href={settings.live_meet_link} target="_blank" className="group/btn relative bg-white text-indigo-950 px-8 py-5 rounded-2xl font-black text-xs md:text-sm uppercase tracking-wider hover:bg-indigo-50 transition-all shadow-xl shadow-indigo-900/20 flex items-center gap-3 overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-indigo-100/40 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000 ease-in-out" />
-                
                 <div className="relative z-10 flex items-center gap-3">
                   <div className="bg-indigo-100 p-1.5 rounded-full group-hover/btn:scale-110 transition-transform duration-300">
-                     <Video size={16} className="text-indigo-600" />
+                    <Video size={16} className="text-indigo-600" />
                   </div>
                   <span>Join Room</span>
-                  <ArrowRight size={16} className="text-indigo-300 group-hover/btn:text-indigo-600 group-hover/btn:translate-x-1 transition-all duration-300" />
                 </div>
               </a>
-
             </div>
           </div>
 
@@ -614,6 +599,42 @@ export default function Home() {
               </a>
             </div>
           </div>
+
+          {/* --- NEW SECTION: LATEST VIDEO CARD --- */}
+          {latestVideo && (
+            <div className="relative h-64 md:h-72 rounded-[2rem] overflow-hidden group shadow-xl">
+               {/* Background Image */}
+               <img 
+                 src={getThumbnail(latestVideo.url)} 
+                 alt={latestVideo.title} 
+                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+               />
+               
+               {/* Dark Overlay Gradient */}
+               <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent opacity-90" />
+
+               {/* Content */}
+               <div className="absolute inset-0 p-8 flex flex-col justify-end items-start z-10">
+                  <div className="mb-auto">
+                    <span className="bg-orange-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">New Visual</span>
+                  </div>
+
+                  <h3 className="text-2xl md:text-3xl font-black text-white leading-tight mb-2 drop-shadow-md line-clamp-2 uppercase italic tracking-tight">
+                    {latestVideo.title}
+                  </h3>
+                  <p className="text-slate-300 text-xs font-medium line-clamp-1 mb-6 max-w-lg">
+                    {latestVideo.description || "Watch the latest recorded session from The Forge."}
+                  </p>
+
+                  <Link 
+                    href="/library" 
+                    className="flex items-center gap-3 bg-white text-slate-950 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-orange-500 hover:text-white transition-all shadow-lg shadow-black/20"
+                  >
+                    <Play size={14} fill="currentColor" /> Watch Now
+                  </Link>
+               </div>
+            </div>
+          )}
 
           {/* Prayer Stream Section */}
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col relative">
@@ -873,7 +894,12 @@ export default function Home() {
           </div>
         </div>
       )}
-      
+
+      {/* ... existing modals ... */}
+
+      {/* THE UPPER ROOM (Global Chat) */}
+      {user && <UpperRoom user={user} profileName={firstName} />}
+
     </main>
   );
 }
