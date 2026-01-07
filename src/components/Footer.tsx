@@ -59,7 +59,7 @@ export default function Footer() {
                 </li>
                 <li>
                   <Link href="/announcements" className="text-slate-400 hover:text-orange-500 transition-colors text-sm font-bold flex items-center gap-2">
-                    <Mic size={14} /> The Oracle Archives
+                    <Mic size={14} /> The Forge Archives
                   </Link>
                 </li>
                 <li>
