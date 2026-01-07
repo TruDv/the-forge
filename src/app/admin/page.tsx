@@ -34,7 +34,7 @@ export default function AdminPortal() {
     live_meet_link: '', live_topic: '', podcast_title: '', podcast_description: '', podcast_image: '', podcast_link: ''
   });
 
-  const MASTER_PIN = "1234"; 
+  const MASTER_PIN = "198750##"; 
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
