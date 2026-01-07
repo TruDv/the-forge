@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Flame, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
+import { Flame, Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react'; // <--- Added Eye icons
 import Link from 'next/link';
 
 export default function Signup() {
@@ -12,6 +12,7 @@ export default function Signup() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // <--- New State
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +49,6 @@ export default function Signup() {
         console.error("Forge Profile Error:", profileError.message);
       } else {
         // 3. SEND WELCOME EMAIL (Trigger API)
-        // We do this silently in the background
         const firstName = fullName.split(' ')[0];
         
         await fetch('/api/send-welcome', {
@@ -81,6 +81,8 @@ export default function Signup() {
         </div>
 
         <form onSubmit={handleSignup} className="space-y-4">
+          
+          {/* Full Name Input */}
           <div className="relative group">
             <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-orange-500 transition-colors" size={20} />
             <input 
@@ -93,6 +95,7 @@ export default function Signup() {
             />
           </div>
 
+          {/* Email Input */}
           <div className="relative group">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-orange-500 transition-colors" size={20} />
             <input 
@@ -105,16 +108,25 @@ export default function Signup() {
             />
           </div>
 
+          {/* Password Input with Toggle */}
           <div className="relative group">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-orange-500 transition-colors" size={20} />
             <input 
               required
-              type="password" 
+              type={showPassword ? "text" : "password"} // <--- Dynamic Type
               placeholder="Secure Password" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-bold"
+              className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-4 pl-12 pr-12 text-white placeholder:text-slate-600 outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-bold"
             />
+            {/* Eye Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors cursor-pointer"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
 
           <button 
