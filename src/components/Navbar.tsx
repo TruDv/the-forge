@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 import { 
   Menu, X, Bell, Music, Play, Pause, 
-  SkipForward, SkipBack, // <--- Added SkipBack
+  SkipForward, SkipBack, 
   Volume2, Loader2, Signal
 } from 'lucide-react';
 
@@ -27,30 +27,61 @@ export default function Navbar() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isLoadingMusic, setIsLoadingMusic] = useState(false);
   
-  // Refs for robust state management inside Audio events
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const indexRef = useRef(0); // Keeps track of index for the event listener
+  const indexRef = useRef(0); 
 
-  // 1. Fetch User & Notifications
+  // 1. Fetch User & Initialize Realtime (ROBUST VERSION)
   useEffect(() => {
-    async function getUserAndListen() {
+    let channel: any;
+
+    async function initSession() {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (session?.user) {
         const name = session.user.user_metadata?.full_name || session.user.email;
         if (name) setInitials(name.charAt(0).toUpperCase());
 
-        const channel = supabase.channel('global_alerts')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-              if (payload.new.user_id !== session.user.id) triggerNotification();
-          })
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prayer_replies' }, (payload) => {
-              if (payload.new.user_id !== session.user.id) triggerNotification();
-          })
-          .subscribe();
-        return () => { supabase.removeChannel(channel); };
+        // --- REALTIME SUBSCRIPTION ---
+        console.log("🔔 Initializing Notification Listener...");
+        
+        channel = supabase
+          .channel('global_notifications') 
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'messages' },
+            (payload) => {
+              // Check if the message is NOT from me
+              if (payload.new && payload.new.user_id !== session.user.id) {
+                console.log("🔔 Message Alert!");
+                triggerNotification();
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'prayer_replies' },
+            (payload) => {
+              // Check if reply is NOT from me
+              if (payload.new && payload.new.user_id !== session.user.id) {
+                console.log("🔔 Reply Alert!");
+                triggerNotification();
+              }
+            }
+          )
+          .subscribe((status, err) => {
+            console.log("Realtime Status:", status);
+            if (status === 'CHANNEL_ERROR') {
+              console.error("Realtime Error:", err);
+            }
+          });
       }
     }
-    getUserAndListen();
+
+    initSession();
+
+    return () => { 
+      if (channel) supabase.removeChannel(channel); 
+    };
   }, []);
 
   // 2. Fetch Music Playlist & Init Player
@@ -60,12 +91,11 @@ export default function Navbar() {
       if (data && data.length > 0) {
         setPlaylist(data);
         
-        // Initialize Audio Object
         if (!audioRef.current) {
           audioRef.current = new Audio();
           audioRef.current.volume = 0.4;
           
-          // CRITICAL FIX: Use the ref to get the LATEST index when song ends
+          // Auto-play next track logic
           audioRef.current.onended = () => {
             const nextIndex = (indexRef.current + 1) % data.length;
             playTrackAtIndex(nextIndex, data);
@@ -73,67 +103,58 @@ export default function Navbar() {
           
           audioRef.current.onwaiting = () => setIsLoadingMusic(true);
           audioRef.current.oncanplay = () => setIsLoadingMusic(false);
-          audioRef.current.onerror = (e) => console.error("Audio Error:", e);
           
-          // Preload first song metadata (don't auto play yet)
-          audioRef.current.src = data[0].url;
+          // Fix for "Empty Src" warning: Check before setting
+          const firstUrl = data[0].url;
+          if (firstUrl) audioRef.current.src = firstUrl;
         }
       }
     }
     fetchMusic();
     
-    // Cleanup
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        // Don't nullify completely to persist across page navs if desired, 
-        // but for safety in React strict mode:
-        // audioRef.current = null; 
-      }
+      if (audioRef.current) audioRef.current.pause();
     };
   }, []);
 
-  // Helper to sync Ref with State
-  useEffect(() => {
-    indexRef.current = currentTrackIndex;
+  // Keep Ref in sync with State for the event listener
+  useEffect(() => { 
+    indexRef.current = currentTrackIndex; 
   }, [currentTrackIndex]);
-
 
   const triggerNotification = () => {
     setNotifCount(prev => prev + 1);
     setIsAnimating(true);
+    // Optional: Play a sound effect
+    // const audio = new Audio("/sounds/ping.mp3");
+    // audio.volume = 0.2;
+    // audio.play().catch(() => {});
+    
     setTimeout(() => setIsAnimating(false), 1000);
   };
 
-  // --- ROBUST TRACK CONTROLS ---
-  
+  // --- MUSIC CONTROLS ---
   const playTrackAtIndex = (index: number, tracks = playlist) => {
     if (!audioRef.current || tracks.length === 0) return;
-
-    // Boundary Checks (Looping)
+    
     let safeIndex = index;
+    // Loop logic
     if (index >= tracks.length) safeIndex = 0;
     if (index < 0) safeIndex = tracks.length - 1;
 
-    // Update State & Ref
     setCurrentTrackIndex(safeIndex);
-    indexRef.current = safeIndex; // Sync ref immediately
+    indexRef.current = safeIndex;
 
-    // Play
     const url = tracks[safeIndex].url;
     
-    // Only reload src if it's different (prevents stutter if play/pause same track)
-    // But for Next/Prev we usually want to force load
+    // Only load if different or ended
     if (audioRef.current.src !== url || audioRef.current.ended) {
       audioRef.current.src = url;
     }
     
-    const playPromise = audioRef.current.play();
-    if (playPromise !== undefined) {
-      playPromise
-        .then(() => setIsPlaying(true))
-        .catch(error => console.log("Playback prevented:", error));
-    }
+    audioRef.current.play()
+      .then(() => setIsPlaying(true))
+      .catch(e => console.log("Playback prevented:", e));
   };
 
   const togglePlay = () => {
@@ -208,37 +229,27 @@ export default function Navbar() {
                     <div className="overflow-hidden w-full">
                       <div className="whitespace-nowrap overflow-hidden">
                         <p className="text-xs font-bold text-white animate-marquee inline-block min-w-full">
-                          {currentSong?.title} &nbsp; • &nbsp; {currentSong?.title} &nbsp; • &nbsp;
+                          {currentSong?.title || "Loading..."} &nbsp; • &nbsp; {currentSong?.title || "Loading..."} &nbsp; • &nbsp;
                         </p>
                       </div>
-                      <p className="text-[10px] text-slate-400 truncate">{currentSong?.artist}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{currentSong?.artist || "The Forge"}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between bg-white/5 rounded-xl p-2">
                     <div className="flex items-center gap-2">
+                      <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors"><SkipBack size={16} /></button>
                       
-                      {/* PREV BUTTON */}
-                      <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors">
-                        <SkipBack size={16} />
-                      </button>
-
-                      {/* PLAY/PAUSE */}
                       <button 
                         onClick={togglePlay}
                         className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
                       >
                         {isLoadingMusic ? <Loader2 size={14} className="animate-spin"/> : (isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5"/>)}
                       </button>
-
-                      {/* NEXT BUTTON */}
-                      <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors">
-                        <SkipForward size={16} />
-                      </button>
-
+                      
+                      <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors"><SkipForward size={16} /></button>
                     </div>
                     
-                    {/* Visualizer */}
                     <div className="flex gap-0.5 items-end h-3">
                       {[1,2,3,4,3,2,1].map((h, i) => (
                         <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 3}px` : '3px', animationDelay: `${i * 0.1}s` }} />
@@ -250,7 +261,7 @@ export default function Navbar() {
             </div>
           )}
 
-          {/* BELL */}
+          {/* BELL (Notifications) */}
           <button 
             onClick={() => setNotifCount(0)} 
             className={`relative p-2 rounded-full transition-all hover:bg-slate-50 ${isAnimating ? 'animate-bounce' : ''}`}
@@ -278,7 +289,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* MOBILE MENU */}
+      {/* MOBILE MENU DRAWER */}
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4 animate-in slide-in-from-top-5 duration-200">
           {navLinks.map((link) => (
