@@ -8,7 +8,8 @@ import Image from 'next/image';
 import { 
   Menu, X, Bell, Music, Play, Pause, 
   SkipForward, SkipBack, 
-  Volume2, Loader2, Signal, ListMusic 
+  Volume2, Loader2, Signal, ListMusic,
+  Repeat, Repeat1
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -30,6 +31,9 @@ export default function Navbar() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isLoadingMusic, setIsLoadingMusic] = useState(false);
+  
+  // --- REPEAT STATE ---
+  const [isRepeatOne, setIsRepeatOne] = useState(false); 
   
   // Progress Bar State
   const [currentTime, setCurrentTime] = useState(0);
@@ -114,8 +118,10 @@ export default function Navbar() {
 
           // EVENTS
           audioRef.current.onended = () => {
-            const nextIndex = (indexRef.current + 1) % data.length;
-            playTrackAtIndex(nextIndex, data);
+            if (!audioRef.current?.loop) {
+                const nextIndex = (indexRef.current + 1) % data.length;
+                playTrackAtIndex(nextIndex, data);
+            }
           };
           
           audioRef.current.ontimeupdate = () => {
@@ -154,7 +160,7 @@ export default function Navbar() {
     // Play the Bell Sound
     if (notificationAudioRef.current) {
         notificationAudioRef.current.currentTime = 0; // Reset to start
-        notificationAudioRef.current.play().catch(e => console.log("Audio play blocked by browser interaction rules", e));
+        notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
     }
 
     setTimeout(() => setIsAnimating(false), 1000);
@@ -231,6 +237,14 @@ export default function Navbar() {
       audioRef.current.play().catch(e => console.log(e));
       setIsPlaying(true);
     }
+  };
+
+  // --- TOGGLE REPEAT ---
+  const toggleRepeat = () => {
+    if (!audioRef.current) return;
+    const newMode = !isRepeatOne;
+    setIsRepeatOne(newMode);
+    audioRef.current.loop = newMode; // Uses native HTML5 audio loop
   };
 
   const handleNext = () => playTrackAtIndex(currentTrackIndex + 1);
@@ -316,24 +330,29 @@ export default function Navbar() {
                   md:absolute md:top-12 md:right-0 md:left-auto md:translate-x-0 md:w-72
                 `}>
                   
-                  {/* CLOSE BUTTON (X) */}
+                  {/* CLOSE BUTTON (LEFT) */}
                   <button 
                     onClick={() => setIsPlayerOpen(false)}
-                    className="absolute -top-3 -right-3 bg-slate-800 text-white rounded-full p-1.5 border border-slate-700 shadow-md hover:bg-slate-700 transition-colors z-[110]"
+                    className="absolute -top-3 -left-3 bg-slate-800 text-white rounded-full p-1.5 border border-slate-700 shadow-md hover:bg-slate-700 transition-colors z-[110]"
                   >
                     <X size={14} />
                   </button>
 
-                  {/* HEADER (Toggle View) */}
+                  {/* HEADER (Toggle View on RIGHT) */}
                   <div className="flex justify-between items-center mb-3 border-b border-white/10 pb-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
                       {showPlaylistView ? "Select Track" : "Now Playing"}
                     </span>
+                    
+                    {/* BUTTON WITH VISIBLE LABEL ON MOBILE */}
                     <button 
                       onClick={() => setShowPlaylistView(!showPlaylistView)}
-                      className="text-slate-400 hover:text-white transition-colors"
+                      className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
                       title={showPlaylistView ? "Back to Player" : "View Playlist"}
                     >
+                      <span className="text-[9px] font-bold uppercase tracking-wider inline-block">
+                        {showPlaylistView ? "Player" : "Playlist"}
+                      </span>
                       {showPlaylistView ? <Music size={14} /> : <ListMusic size={16} />}
                     </button>
                   </div>
@@ -391,6 +410,16 @@ export default function Navbar() {
 
                       <div className="flex items-center justify-between bg-white/5 rounded-xl p-2">
                         <div className="flex items-center gap-2">
+                          
+                          {/* REPEAT BUTTON */}
+                          <button 
+                            onClick={toggleRepeat} 
+                            className={`transition-colors p-1 ${isRepeatOne ? 'text-indigo-400' : 'text-slate-500 hover:text-white'}`}
+                            title={isRepeatOne ? "Looping One" : "Loop Playlist"}
+                          >
+                             {isRepeatOne ? <Repeat1 size={14} /> : <Repeat size={14} />}
+                          </button>
+
                           <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors p-1"><SkipBack size={16} /></button>
                           
                           <button 
