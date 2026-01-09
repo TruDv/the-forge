@@ -19,6 +19,9 @@ export default function Navbar() {
   // --- NOTIFICATION STATE ---
   const [notifCount, setNotifCount] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Ref for the Notification Sound
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- MUSIC PLAYER STATE ---
   const [playlist, setPlaylist] = useState<any[]>([]);
@@ -40,6 +43,12 @@ export default function Navbar() {
   // --- 1. INITIALIZATION & REALTIME ---
   useEffect(() => {
     let channel: any;
+
+    // Initialize the Notification Sound (Short Ding)
+    notificationAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+    if (notificationAudioRef.current) {
+        notificationAudioRef.current.volume = 0.6;
+    }
 
     async function initSession() {
       const { data: { session } } = await supabase.auth.getSession();
@@ -141,6 +150,13 @@ export default function Navbar() {
   const triggerNotification = () => {
     setNotifCount(prev => prev + 1);
     setIsAnimating(true);
+    
+    // Play the Bell Sound
+    if (notificationAudioRef.current) {
+        notificationAudioRef.current.currentTime = 0; // Reset to start
+        notificationAudioRef.current.play().catch(e => console.log("Audio play blocked by browser interaction rules", e));
+    }
+
     setTimeout(() => setIsAnimating(false), 1000);
   };
 
@@ -293,8 +309,8 @@ export default function Navbar() {
                 <div className={`
                   bg-slate-900 rounded-2xl shadow-2xl p-3 border border-slate-800 z-[100] animate-in zoom-in duration-200
                   
-                  /* MOBILE STYLES: Centered & MINI Compact */
-                  fixed top-24 left-1/2 -translate-x-1/2 w-[85%] max-w-[280px]
+                  /* MOBILE STYLES: Centered & COMPACT (Fixed Width) */
+                  fixed top-24 left-1/2 -translate-x-1/2 w-[85%] max-w-[260px]
                   
                   /* DESKTOP STYLES: Absolute Top-Right */
                   md:absolute md:top-12 md:right-0 md:left-auto md:translate-x-0 md:w-72
