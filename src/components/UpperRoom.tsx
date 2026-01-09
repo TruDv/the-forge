@@ -54,7 +54,6 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     sendAudioRef.current = new Audio(sentUrl);
     receiveAudioRef.current = new Audio(receivedUrl);
     
-    // Backup sounds if files missing
     const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
     const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
     sendAudioRef.current.onerror = () => { if(sendAudioRef.current) sendAudioRef.current.src = backupSent; };
@@ -84,7 +83,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
         .order('created_at', { ascending: false }) // Get newest 50
         .limit(50);
       
-      if (error) console.error("Error fetching messages:", error);
+      if (error) console.error("Fetch Error:", error);
       if (data) setMessages(data.reverse()); // Flip to display correctly
     };
     fetchMessages();
@@ -134,12 +133,11 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     const text = newMessage;
     const parentId = replyingTo ? replyingTo.id : null;
     
-    // Optimistic UI update (Clear box immediately)
     setNewMessage('');
     if(textareaRef.current) textareaRef.current.style.height = 'auto'; 
     setReplyingTo(null);
 
-    // --- DATABASE INSERT WITH DEBUGGING ---
+    // --- INSERT WITH DEBUGGING ---
     const { error } = await supabase.from('messages').insert([{
       content: text, 
       type: 'text', 
@@ -149,20 +147,17 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     }]);
 
     if (error) { 
-      // !!! THIS IS THE DEBUGGING ALERT !!!
       console.error("Supabase Write Error:", error);
-      alert(`Message Failed to Save!\nError: ${error.message}\nDetails: ${error.details || 'None'}\nHint: ${error.hint || 'None'}`);
-      
-      setNewMessage(text); // Restore text so user doesn't lose it
+      alert(`Message Failed!\nError: ${error.message}`);
+      setNewMessage(text); 
       setIsSending(false);
       return;
     }
 
-    // Success
     playSound('send');
     setIsSending(false);
 
-    // Trigger Notification API (Fire and Forget)
+    // Notification API
     fetch('/api/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -174,13 +169,24 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     });
   };
 
-  // ... (Rest of the functions: deleteMessage, startEditing, saveEdit, handleReply, etc.)
-  // I am keeping these compacted to save space, assuming they work fine since they are logic-only.
-  
+  // --- UPDATED DELETE FUNCTION ---
   const deleteMessage = async (msgId: string) => {
-    if(!confirm("Delete this message?")) return;
+    // 1. Confirm
+    if(!window.confirm("Are you sure you want to delete this message?")) return;
+    
     setActiveMenuId(null);
-    await supabase.from('messages').delete().eq('id', msgId);
+
+    // 2. Delete from DB
+    const { error } = await supabase.from('messages').delete().eq('id', msgId);
+
+    // 3. Handle Error or Success
+    if (error) {
+       console.error("Delete Error:", error);
+       alert("Delete Failed: " + error.message);
+    } else {
+       // Optimistic update
+       setMessages((current) => current.filter(msg => msg.id !== msgId));
+    }
   };
 
   const startEditing = (msg: any) => { setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null); };
