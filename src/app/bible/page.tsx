@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { 
   BookOpen, ChevronRight, ChevronLeft, Search, 
-  Loader2, Flame, Menu, X, ArrowRight, Settings, Type,
+  Loader2, Flame, Menu, X, Settings, Type,
   Languages, Check
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
@@ -36,7 +36,7 @@ function BibleContent() {
   const [currentBook, setCurrentBook] = useState("John");
   const [currentChapter, setCurrentChapter] = useState(1);
   const [bibleContent, setBibleContent] = useState<any[]>([]); 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Default to false for instant cache feel
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'books' | 'chapters'>('books');
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,58 +45,36 @@ function BibleContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const initialized = useRef(false);
 
-  // --- CACHED FETCH LOGIC ---
-  const fetchChapter = useCallback(async (book: string, chapter: number, trans: string, isPrefetch = false) => {
-    if (!isPrefetch) setLoading(true);
-    
+  const loadChapter = async (book: string, chapter: number, trans: string) => {
     const searchBook = book.toLowerCase() === 'psalm' ? 'Psalms' : book;
-    const cacheKey = `bible_${trans}_${searchBook}_${chapter}`.replace(/\s+/g, '_');
-
-    // 1. Check Cache first
-    const cachedData = localStorage.getItem(cacheKey);
-    if (cachedData) {
-      const parsed = JSON.parse(cachedData);
-      if (!isPrefetch) {
-        setBibleContent(parsed);
-        setCurrentBook(searchBook);
-        setCurrentChapter(chapter);
-        setLoading(false);
-        window.scrollTo({ top: 0, behavior: 'instant' });
-      }
+    const cacheKey = `b_${trans}_${searchBook}_${chapter}`;
+    
+    // INSTANT CACHE CHECK
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      setBibleContent(JSON.parse(cached));
+      setCurrentBook(searchBook);
+      setCurrentChapter(chapter);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      setLoading(false);
       return;
     }
 
-    // 2. Fetch if not in cache
+    // ONLY SHOW LOADING IF NOT IN CACHE
+    setLoading(true);
     try {
       const res = await fetch(`https://bible-api.com/${encodeURIComponent(searchBook)}+${chapter}?translation=${trans}`);
       const data = await res.json();
       if (data.verses) {
-        // Save to cache
+        setBibleContent(data.verses);
+        setCurrentBook(searchBook);
+        setCurrentChapter(chapter);
         localStorage.setItem(cacheKey, JSON.stringify(data.verses));
-        
-        if (!isPrefetch) {
-          setBibleContent(data.verses);
-          setCurrentBook(searchBook);
-          setCurrentChapter(chapter);
-          window.scrollTo({ top: 0, behavior: 'instant' });
-        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
       }
-    } catch (err) {
-      console.error("Bible fetch error:", err);
-    } finally {
-      if (!isPrefetch) setLoading(false);
-    }
-  }, []);
-
-  // --- PRE-FETCH NEXT CHAPTER ---
-  useEffect(() => {
-    if (loading) return;
-    const maxChapters = BIBLE_DATA[currentBook];
-    if (currentChapter < maxChapters) {
-      // Quietly download next chapter in background
-      fetchChapter(currentBook, currentChapter + 1, translation, true);
-    }
-  }, [currentChapter, currentBook, translation, loading, fetchChapter]);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
 
   useEffect(() => {
     const loc = searchParams.get('location');
@@ -104,21 +82,21 @@ function BibleContent() {
       const decoded = decodeURIComponent(loc);
       const lastSpace = decoded.lastIndexOf(' ');
       if (lastSpace !== -1) {
-        let book = decoded.substring(0, lastSpace).trim();
-        const chap = parseInt(decoded.substring(lastSpace + 1).split(':')[0]);
-        if (!BIBLE_DATA[book] && BIBLE_DATA[book + 's']) book = book + 's';
-        if (BIBLE_DATA[book] && !isNaN(chap)) {
-          fetchChapter(book, chap, translation);
+        let b = decoded.substring(0, lastSpace).trim();
+        const c = parseInt(decoded.substring(lastSpace + 1).split(':')[0]);
+        if (!BIBLE_DATA[b] && BIBLE_DATA[b + 's']) b += 's';
+        if (BIBLE_DATA[b]) {
+          loadChapter(b, c, translation);
           initialized.current = true;
           return;
         }
       }
     }
     if (!initialized.current) {
-      fetchChapter("John", 1, translation);
+      loadChapter("John", 1, translation);
       initialized.current = true;
     }
-  }, [searchParams, fetchChapter, translation]);
+  }, [searchParams, translation]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,59 +106,52 @@ function BibleContent() {
       const res = await fetch(`https://bible-api.com/${searchQuery}?translation=${translation}`);
       const data = await res.json();
       if (data.verses) {
-          setBibleContent(data.verses);
-          if (data.reference) {
-              const parts = data.reference.split(' ');
-              const chapPart = parts.pop();
-              const chap = parseInt(chapPart.split(':')[0]);
-              const book = parts.join(' ');
-              setCurrentBook(book);
-              setCurrentChapter(chap);
-          }
+        setBibleContent(data.verses);
+        if (data.reference) {
+          const parts = data.reference.split(' ');
+          const chap = parseInt(parts.pop().split(':')[0]);
+          setCurrentBook(parts.join(' '));
+          setCurrentChapter(chap);
+        }
       }
-    } catch (err) { alert("Reference not found."); }
+    } catch (e) { alert("Not found"); }
     setLoading(false);
     setIsSidebarOpen(false);
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col md:flex-row text-slate-900 overflow-hidden relative">
-      
+    <div className="min-h-screen bg-white flex flex-col md:flex-row text-slate-900 relative">
       {/* MOBILE HEADER */}
-      <div className="md:hidden bg-slate-950 p-4 flex justify-between items-center sticky top-0 z-[60] shadow-md h-16">
+      <div className="md:hidden bg-slate-950 p-4 flex justify-between items-center sticky top-0 z-[60] h-16">
         <div className="flex items-center gap-2 text-white">
           <BookOpen size={18} className="text-orange-500" />
-          <span className="font-black tracking-tighter uppercase text-sm">Forge Bible</span>
+          <span className="font-black uppercase text-sm">Forge Bible</span>
         </div>
         <div className="flex items-center gap-3">
-            <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="text-white p-1"><Settings size={20}/></button>
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white p-1">{isSidebarOpen ? <X size={24}/> : <Menu size={24}/>}</button>
+            <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="text-white"><Settings size={20}/></button>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white">{isSidebarOpen ? <X size={24}/> : <Menu size={24}/>}</button>
         </div>
       </div>
 
       {/* SIDEBAR */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-full md:w-72 bg-slate-50 border-r border-slate-200 transform transition-transform duration-200 md:translate-x-0 md:static flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-4 bg-slate-50 border-b border-slate-200">
-            <form onSubmit={handleSearch} className="relative group">
-                <input type="text" placeholder="Jump to John 3:16..." className="w-full bg-white border border-slate-300 text-slate-900 text-sm rounded-xl py-3 pl-10 pr-4 outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                <Search className="absolute left-3 top-3.5 text-slate-400 group-focus-within:text-orange-500" size={16} />
+      <aside className={`fixed inset-y-0 left-0 z-50 w-full md:w-72 bg-slate-50 border-r border-slate-200 transform transition-transform duration-150 md:translate-x-0 md:static flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-4">
+            <form onSubmit={handleSearch} className="relative">
+                <input type="text" placeholder="Search John 3:16..." className="w-full bg-white border border-slate-300 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-orange-500" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                <Search className="absolute left-3 top-3 text-slate-400" size={16} />
             </form>
         </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+        <div className="flex-1 overflow-y-auto p-3">
             {viewMode === 'books' ? (
                 Object.keys(BIBLE_DATA).map((book) => (
-                    <button key={book} onClick={() => { setCurrentBook(book); setViewMode('chapters'); }} className={`w-full text-left px-4 py-3 rounded-xl text-[14px] font-bold flex justify-between items-center transition-all ${currentBook === book ? 'bg-orange-500 text-white' : 'text-slate-600 hover:bg-slate-200'}`}>
-                      {book} <ChevronRight size={14} />
-                    </button>
+                    <button key={book} onClick={() => { setCurrentBook(book); setViewMode('chapters'); }} className={`w-full text-left px-4 py-2 rounded-lg text-sm font-bold mb-1 ${currentBook === book ? 'bg-orange-500 text-white' : 'hover:bg-slate-200'}`}>{book}</button>
                 ))
             ) : (
-                <div className="px-2 pb-10">
-                    <button onClick={() => setViewMode('books')} className="text-xs text-orange-600 mb-4 flex items-center gap-1 uppercase font-black p-2 bg-orange-50 rounded-lg"> <ChevronLeft size={14}/> Back to Books</button>
-                    <h3 className="font-black text-xl mb-4 uppercase italic text-slate-900 border-l-4 border-orange-500 pl-3">{currentBook}</h3>
+                <div className="px-2">
+                    <button onClick={() => setViewMode('books')} className="text-xs text-orange-600 mb-4 font-black flex items-center gap-1"><ChevronLeft size={14}/> BOOKS</button>
                     <div className="grid grid-cols-4 gap-2">
                         {Array.from({ length: BIBLE_DATA[currentBook] || 0 }, (_, i) => i + 1).map((chap) => (
-                            <button key={chap} onClick={() => { fetchChapter(currentBook, chap, translation); setIsSidebarOpen(false); }} className={`h-12 rounded-xl text-[14px] font-black transition-all ${currentChapter === chap ? 'bg-slate-900 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'}`}>{chap}</button>
+                            <button key={chap} onClick={() => { loadChapter(currentBook, chap, translation); setIsSidebarOpen(false); }} className={`h-10 rounded-lg text-xs font-bold ${currentChapter === chap ? 'bg-slate-900 text-white' : 'bg-white border hover:bg-slate-50'}`}>{chap}</button>
                         ))}
                     </div>
                 </div>
@@ -188,63 +159,48 @@ function BibleContent() {
         </div>
       </aside>
 
-      {/* READER AREA */}
-      <section className="flex-1 flex flex-col h-screen bg-white">
-        <div className="bg-slate-50/80 backdrop-blur-md border-b border-slate-200 p-3 md:px-10 flex justify-between items-center z-40">
-          <div className="flex flex-col">
-              <h1 className="text-lg md:text-2xl font-black text-slate-900 uppercase tracking-tighter">{currentBook} <span className="text-orange-500">{currentChapter}</span></h1>
-          </div>
+      {/* READER */}
+      <section className="flex-1 flex flex-col h-screen overflow-hidden">
+        <div className="bg-slate-50 border-b p-3 md:px-10 flex justify-between items-center z-40">
+          <h1 className="font-black text-lg md:text-xl uppercase">{currentBook} <span className="text-orange-500">{currentChapter}</span></h1>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`p-2 rounded-lg border transition-all ${isSettingsOpen ? 'bg-slate-900 text-white' : 'bg-white text-slate-600'}`}><Type size={18} /></button>
-            <div className="flex bg-slate-200 p-1 rounded-lg">
-              <button onClick={() => { if (currentChapter > 1) fetchChapter(currentBook, currentChapter - 1, translation) }} disabled={currentChapter <= 1} className="p-1.5 hover:bg-white rounded-md disabled:opacity-30"><ChevronLeft size={18} /></button>
-              <button onClick={() => { if (currentChapter < BIBLE_DATA[currentBook]) fetchChapter(currentBook, currentChapter + 1, translation) }} disabled={currentChapter >= BIBLE_DATA[currentBook]} className="p-1.5 hover:bg-white rounded-md disabled:opacity-30"><ChevronRight size={18} /></button>
+            <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="p-2 bg-white border rounded-lg"><Type size={18} /></button>
+            <div className="flex gap-1">
+              <button onClick={() => { if (currentChapter > 1) loadChapter(currentBook, currentChapter - 1, translation) }} disabled={currentChapter <= 1} className="p-2 border rounded-lg disabled:opacity-30"><ChevronLeft size={18} /></button>
+              <button onClick={() => { if (currentChapter < BIBLE_DATA[currentBook]) loadChapter(currentBook, currentChapter + 1, translation) }} disabled={currentChapter >= BIBLE_DATA[currentBook]} className="p-2 border rounded-lg disabled:opacity-30"><ChevronRight size={18} /></button>
             </div>
           </div>
         </div>
 
         {isSettingsOpen && (
-          <div className="absolute right-4 top-32 md:top-20 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 z-[70] animate-in fade-in slide-in-from-top-2">
-              <div className="mb-6">
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 flex items-center gap-2"><Languages size={14}/> Translation</p>
-                  <div className="grid grid-cols-1 gap-1">
-                    {TRANSLATIONS.map((t) => (
-                      <button key={t.id} onClick={() => { setTranslation(t.id); setIsSettingsOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex justify-between items-center ${translation === t.id ? 'bg-orange-500 text-white' : 'hover:bg-slate-50'}`}>{t.name} {translation === t.id && <Check size={14}/>}</button>
-                    ))}
-                  </div>
-              </div>
-              <div>
-                  <p className="text-[10px] font-black uppercase text-slate-400 mb-3 flex items-center gap-2"><Type size={14}/> Text Size</p>
-                  <div className="flex bg-slate-100 p-1 rounded-xl">
-                    {(['sm', 'md', 'lg'] as const).map((size) => (
-                      <button key={size} onClick={() => setFontSize(size)} className={`flex-1 py-1.5 text-xs font-black uppercase rounded-lg transition-all ${fontSize === size ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>{size}</button>
-                    ))}
-                  </div>
+          <div className="absolute right-4 top-32 md:top-20 w-64 bg-white rounded-2xl shadow-2xl border p-5 z-[70]">
+              <p className="text-[10px] font-black uppercase text-slate-400 mb-3">Translation</p>
+              {TRANSLATIONS.map((t) => (
+                <button key={t.id} onClick={() => { setTranslation(t.id); setIsSettingsOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold mb-1 ${translation === t.id ? 'bg-orange-500 text-white' : 'hover:bg-slate-50'}`}>{t.name}</button>
+              ))}
+              <p className="text-[10px] font-black uppercase text-slate-400 mt-4 mb-3">Text Size</p>
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                {(['sm', 'md', 'lg'] as const).map((size) => (
+                  <button key={size} onClick={() => setFontSize(size)} className={`flex-1 py-1 text-xs font-bold rounded-lg ${fontSize === size ? 'bg-white shadow-sm' : ''}`}>{size}</button>
+                ))}
               </div>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto pb-32">
-          <div className="max-w-3xl mx-auto p-6 md:p-12">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="animate-spin text-orange-500" size={40} />
+        <div className="flex-1 overflow-y-auto p-6 md:p-12 pb-40">
+          {loading ? (
+            <div className="flex justify-center py-20"><Loader2 className="animate-spin text-orange-500" size={32} /></div>
+          ) : (
+            <div className={`font-serif text-slate-800 ${fontSize === 'sm' ? 'text-base' : fontSize === 'lg' ? 'text-2xl' : 'text-xl'} leading-relaxed max-w-2xl mx-auto`}>
+              <div className="mb-8 text-center uppercase">
+                <span className="text-orange-500 font-sans font-black text-xs tracking-[0.3em]">{currentBook}</span>
+                <h2 className="text-5xl font-black">{currentChapter}</h2>
               </div>
-            ) : (
-              <div className={`font-serif text-slate-800 transition-all ${fontSize === 'sm' ? 'text-base' : fontSize === 'lg' ? 'text-2xl' : 'text-lg md:text-xl'} leading-relaxed`}>
-                <div className="mb-10 text-center border-b border-slate-100 pb-10">
-                  <span className="text-orange-500 font-sans font-black text-xs uppercase tracking-[0.4em] block mb-2">{currentBook}</span>
-                  <h2 className="text-6xl font-black text-slate-900 tracking-tighter">{currentChapter}</h2>
-                </div>
-                {bibleContent.map((verse, index) => (
-                  <span key={index} className="inline group">
-                    <sup className="text-orange-500 font-sans font-black mr-1 text-[10px] opacity-60">{verse.verse}</sup>
-                    <span>{verse.text} </span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+              {bibleContent.map((v, i) => (
+                <span key={i}><sup className="text-orange-500 font-sans font-bold mr-1 text-[10px]">{v.verse}</sup>{v.text} </span>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>
