@@ -290,10 +290,26 @@ export default function Navbar() {
 
               {/* POPUP PLAYER */}
               {isPlayerOpen && (
-                <div className="absolute top-12 right-0 w-72 bg-slate-900 rounded-2xl shadow-2xl p-4 border border-slate-800 z-[100] animate-in slide-in-from-top-2 duration-200">
+                <div className={`
+                  bg-slate-900 rounded-2xl shadow-2xl p-3 border border-slate-800 z-[100] animate-in zoom-in duration-200
                   
+                  /* MOBILE STYLES: Centered & MINI Compact */
+                  fixed top-24 left-1/2 -translate-x-1/2 w-[85%] max-w-[280px]
+                  
+                  /* DESKTOP STYLES: Absolute Top-Right */
+                  md:absolute md:top-12 md:right-0 md:left-auto md:translate-x-0 md:w-72
+                `}>
+                  
+                  {/* CLOSE BUTTON (X) */}
+                  <button 
+                    onClick={() => setIsPlayerOpen(false)}
+                    className="absolute -top-3 -right-3 bg-slate-800 text-white rounded-full p-1.5 border border-slate-700 shadow-md hover:bg-slate-700 transition-colors z-[110]"
+                  >
+                    <X size={14} />
+                  </button>
+
                   {/* HEADER (Toggle View) */}
-                  <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
+                  <div className="flex justify-between items-center mb-3 border-b border-white/10 pb-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                       {showPlaylistView ? "Select Track" : "Now Playing"}
                     </span>
@@ -308,7 +324,7 @@ export default function Navbar() {
 
                   {/* VIEW 1: PLAYLIST */}
                   {showPlaylistView ? (
-                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                       {playlist.map((track, idx) => (
                         <button 
                           key={track.id}
@@ -325,24 +341,24 @@ export default function Navbar() {
                       ))}
                     </div>
                   ) : (
-                    /* VIEW 2: NOW PLAYING CONTROLS */
+                    /* VIEW 2: NOW PLAYING CONTROLS (Miniaturized) */
                     <>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className={`w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
-                          <Music size={20} className="text-white" />
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
+                          <Music size={18} className="text-white" />
                         </div>
                         <div className="overflow-hidden w-full">
                           <div className="whitespace-nowrap overflow-hidden">
-                            <p className="text-sm font-bold text-white animate-marquee inline-block min-w-full">
+                            <p className="text-xs font-bold text-white animate-marquee inline-block min-w-full">
                               {currentSong?.title || "Loading..."} &nbsp; • &nbsp; {currentSong?.title || "Loading..."} &nbsp; • &nbsp;
                             </p>
                           </div>
-                          <p className="text-[10px] text-slate-400 truncate">{currentSong?.artist || "The Forge"}</p>
+                          <p className="text-[9px] text-slate-400 truncate">{currentSong?.artist || "The Forge"}</p>
                         </div>
                       </div>
                       
                       {/* PROGRESS BAR */}
-                      <div className="mb-3">
+                      <div className="mb-2">
                         <input 
                           type="range" 
                           min="0" 
@@ -351,30 +367,30 @@ export default function Navbar() {
                           onChange={handleSeek}
                           className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
                         />
-                        <div className="flex justify-between mt-1 text-[9px] font-medium text-slate-400">
+                        <div className="flex justify-between mt-1 text-[8px] font-medium text-slate-400">
                           <span>{formatTime(currentTime)}</span>
                           <span>{formatTime(duration)}</span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between bg-white/5 rounded-xl p-3">
-                        <div className="flex items-center gap-3">
-                          <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors"><SkipBack size={18} /></button>
+                      <div className="flex items-center justify-between bg-white/5 rounded-xl p-2">
+                        <div className="flex items-center gap-2">
+                          <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors p-1"><SkipBack size={16} /></button>
                           
                           <button 
                             onClick={togglePlay}
-                            className="w-10 h-10 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
+                            className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
                           >
-                            {isLoadingMusic ? <Loader2 size={16} className="animate-spin"/> : (isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5"/>)}
+                            {isLoadingMusic ? <Loader2 size={14} className="animate-spin"/> : (isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5"/>)}
                           </button>
                           
-                          <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors"><SkipForward size={18} /></button>
+                          <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors p-1"><SkipForward size={16} /></button>
                         </div>
                         
                         {/* Visualizer (Simple bars) */}
-                        <div className="flex gap-0.5 items-end h-4">
+                        <div className="flex gap-0.5 items-end h-3">
                           {[1,2,3,4].map((h, i) => (
-                            <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 4}px` : '3px', animationDelay: `${i * 0.1}s` }} />
+                            <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 3}px` : '2px', animationDelay: `${i * 0.1}s` }} />
                           ))}
                         </div>
                       </div>
