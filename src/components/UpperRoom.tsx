@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
   Mic, Square, Trash2, Play, Pause, MoreVertical, Edit2, Check,
-  CornerUpLeft, AtSign // <--- Icon for Mentions
+  CornerUpLeft
 } from 'lucide-react';
 import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 
@@ -17,7 +17,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
   
-  // --- MENTION STATE (NEW) ---
+  // --- MENTION STATE ---
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -51,15 +51,14 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
   useEffect(() => {
     const sentUrl = "/sounds/sent.mp3"; 
     const receivedUrl = "/sounds/received.mp3"; 
-    const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
-    const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
-
     sendAudioRef.current = new Audio(sentUrl);
     receiveAudioRef.current = new Audio(receivedUrl);
+    
+    // Backup sounds if files missing
+    const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
+    const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
     sendAudioRef.current.onerror = () => { if(sendAudioRef.current) sendAudioRef.current.src = backupSent; };
     receiveAudioRef.current.onerror = () => { if(receiveAudioRef.current) receiveAudioRef.current.src = backupRec; };
-    if(sendAudioRef.current) sendAudioRef.current.volume = 0.5;
-    if(receiveAudioRef.current) receiveAudioRef.current.volume = 0.5;
   }, []);
 
   const playSound = (type: 'send' | 'receive') => {
@@ -67,7 +66,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // 1. Fetch Data (Messages + Users)
+  // 1. Fetch Data
   useEffect(() => {
     if (!isOpen) return;
 
@@ -77,20 +76,19 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     };
     fetchTopic();
 
-   // Fetch Messages (Corrected)
+    // Fetch Messages (CORRECTED LOGIC: Newest First)
     const fetchMessages = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('messages')
         .select(`*, reply_to:reply_to_id(content, author_name, type)`)
-        .order('created_at', { ascending: false }) // 1. Get NEWEST first
+        .order('created_at', { ascending: false }) // Get newest 50
         .limit(50);
       
-      if (data) {
-        setMessages(data.reverse()); // 2. Flip them back so they look correct (Old -> New)
-      }
+      if (error) console.error("Error fetching messages:", error);
+      if (data) setMessages(data.reverse()); // Flip to display correctly
     };
+    fetchMessages();
 
-    // NEW: Fetch Users for Tagging
     const fetchUsers = async () => {
       const { data } = await supabase.from('profiles').select('id, full_name').order('full_name', { ascending: true });
       if (data) setAllUsers(data);
@@ -131,16 +129,17 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     
     setIsSending(true);
     setShowEmojiPicker(false);
-    setShowMentionList(false); // Close mentions
+    setShowMentionList(false);
     
     const text = newMessage;
     const parentId = replyingTo ? replyingTo.id : null;
     
+    // Optimistic UI update (Clear box immediately)
     setNewMessage('');
     if(textareaRef.current) textareaRef.current.style.height = 'auto'; 
     setReplyingTo(null);
-    playSound('send');
 
+    // --- DATABASE INSERT WITH DEBUGGING ---
     const { error } = await supabase.from('messages').insert([{
       content: text, 
       type: 'text', 
@@ -149,46 +148,55 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
       reply_to_id: parentId
     }]);
 
-    if (error) { console.error(error); setNewMessage(text); }
+    if (error) { 
+      // !!! THIS IS THE DEBUGGING ALERT !!!
+      console.error("Supabase Write Error:", error);
+      alert(`Message Failed to Save!\nError: ${error.message}\nDetails: ${error.details || 'None'}\nHint: ${error.hint || 'None'}`);
+      
+      setNewMessage(text); // Restore text so user doesn't lose it
+      setIsSending(false);
+      return;
+    }
+
+    // Success
+    playSound('send');
     setIsSending(false);
+
+    // Trigger Notification API (Fire and Forget)
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: text,
+        author_name: profileName || 'Puritan',
+        exclude_id: user.id
+      })
+    });
   };
 
+  // ... (Rest of the functions: deleteMessage, startEditing, saveEdit, handleReply, etc.)
+  // I am keeping these compacted to save space, assuming they work fine since they are logic-only.
+  
   const deleteMessage = async (msgId: string) => {
     if(!confirm("Delete this message?")) return;
     setActiveMenuId(null);
     await supabase.from('messages').delete().eq('id', msgId);
   };
 
-  const startEditing = (msg: any) => {
-    setEditingId(msg.id);
-    setEditText(msg.content);
-    setActiveMenuId(null);
-  };
-
-  const saveEdit = async (msgId: string) => {
-    if (!editText.trim()) return;
-    await supabase.from('messages').update({ content: editText }).eq('id', msgId);
-    setEditingId(null);
-  };
-
-  const handleReply = (msg: any) => {
-    setReplyingTo(msg);
-    setActiveMenuId(null);
-  };
+  const startEditing = (msg: any) => { setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null); };
+  const saveEdit = async (msgId: string) => { if (!editText.trim()) return; await supabase.from('messages').update({ content: editText }).eq('id', msgId); setEditingId(null); };
+  const handleReply = (msg: any) => { setReplyingTo(msg); setActiveMenuId(null); };
 
   // --- MENTION LOGIC ---
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setNewMessage(val);
-    
-    // Resize textarea
     e.target.style.height = 'auto';
     e.target.style.height = `${e.target.scrollHeight}px`;
 
-    // Detect @Mention
-    const lastWord = val.split(/[\s\n]+/).pop(); // Get last word typed
+    const lastWord = val.split(/[\s\n]+/).pop(); 
     if (lastWord && lastWord.startsWith('@')) {
-      setMentionQuery(lastWord.slice(1)); // Remove '@' for search
+      setMentionQuery(lastWord.slice(1)); 
       setShowMentionList(true);
     } else {
       setShowMentionList(false);
@@ -196,41 +204,27 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
   };
 
   const insertMention = (name: string) => {
-    // Replace the last word (the incomplete tag) with the full name
-    const words = newMessage.split(/([\s\n]+)/); // Split keeping delimiters
+    const words = newMessage.split(/([\s\n]+)/); 
     const lastWordIndex = words.length - 1;
-    words[lastWordIndex] = `@${name} `; // Replace last word with tag + space
-    
-    const newText = words.join('');
-    setNewMessage(newText);
+    words[lastWordIndex] = `@${name} `; 
+    setNewMessage(words.join(''));
     setShowMentionList(false);
-    
-    // Focus back on textarea
     if (textareaRef.current) textareaRef.current.focus();
   };
 
-  // Filter users based on query
-  const filteredUsers = allUsers.filter(u => 
-    u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())
-  );
+  const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
 
-  // Keyboard Handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isMobile = window.innerWidth < 768;
     if (e.key === 'Enter') {
       if (e.shiftKey) return;
-      if (!isMobile) {
-        e.preventDefault(); 
-        handleSendMessage(); 
-      }
+      if (!isMobile) { e.preventDefault(); handleSendMessage(); }
     }
   };
 
   const renderTextWithMentions = (text: string) => {
-    const parts = text.split(/(@\w+(?:\s\w+)?)/g); // Regex to catch names with spaces too if needed
-    return parts.map((part, i) => 
-      part.startsWith('@') ? <span key={i} className="text-indigo-200 font-bold bg-indigo-900/10 rounded px-0.5">{part}</span> : part
-    );
+    const parts = text.split(/(@\w+(?:\s\w+)?)/g); 
+    return parts.map((part, i) => part.startsWith('@') ? <span key={i} className="text-indigo-200 font-bold bg-indigo-900/10 rounded px-0.5">{part}</span> : part);
   };
 
   // --- RECORDING FUNCTIONS ---
@@ -244,9 +238,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => { if (prev >= 30) { stopRecording(); return 30; } return prev + 1; });
-      }, 1000);
+      timerRef.current = setInterval(() => { setRecordingTime((prev) => { if (prev >= 30) { stopRecording(); return 30; } return prev + 1; }); }, 1000);
     } catch (err) { alert("Could not access microphone."); console.error(err); }
   };
 
@@ -277,7 +269,8 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     const { error: dbError } = await supabase.from('messages').insert([{
       content: 'Voice Note', type: 'audio', media_url: publicUrl, user_id: user.id, author_name: profileName || 'Puritan'
     }]);
-    if (!dbError) playSound('send');
+    if (dbError) { alert("Audio Save Error: " + dbError.message); }
+    else { playSound('send'); }
     setIsSending(false);
   };
 
