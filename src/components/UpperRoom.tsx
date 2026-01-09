@@ -77,16 +77,18 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     };
     fetchTopic();
 
-    // Fetch Messages
+   // Fetch Messages (Corrected)
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
         .select(`*, reply_to:reply_to_id(content, author_name, type)`)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) // 1. Get NEWEST first
         .limit(50);
-      if (data) setMessages(data);
+      
+      if (data) {
+        setMessages(data.reverse()); // 2. Flip them back so they look correct (Old -> New)
+      }
     };
-    fetchMessages();
 
     // NEW: Fetch Users for Tagging
     const fetchUsers = async () => {
