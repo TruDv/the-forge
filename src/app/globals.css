@@ -83,3 +83,21 @@ body {
   from { height: 4px; }
   to { height: 12px; }
 }
+
+@layer utilities {
+  .animate-marquee {
+    display: flex;
+    gap: 2rem; /* Space between the two duplicate lists */
+    animation: marquee 60s linear infinite; /* 60s = Very Slow */
+  }
+  
+  /* PAUSE ON HOVER */
+  .group:hover .animate-marquee {
+    animation-play-state: paused;
+  }
+  
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); } /* Move half way (since we duplicate content) */
+  }
+}

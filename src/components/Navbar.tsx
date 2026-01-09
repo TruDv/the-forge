@@ -9,7 +9,7 @@ import {
   Menu, X, Bell, Music, Play, Pause, 
   SkipForward, SkipBack, 
   Volume2, Loader2, Signal, ListMusic,
-  Repeat, Repeat1
+  Repeat, Repeat1, BookOpen 
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -225,7 +225,7 @@ export default function Navbar() {
         }
         // -----------------------------------------------------
       })
-      .catch(e => console.log("Playback prevented:", e));
+      .catch(e => console.log("Audio playback error:", e));
   };
 
   const togglePlay = () => {
@@ -303,15 +303,26 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* ACTIONS */}
-        <div className="flex items-center gap-2 md:gap-4">
+        {/* ACTIONS - Reduced gap on mobile for tighter layout */}
+        <div className="flex items-center gap-1 md:gap-4">
           
+          {/* QUICK BIBLE ACCESS */}
+          <Link 
+            href="/bible" 
+            className={`p-1.5 md:p-2 rounded-full transition-all flex items-center justify-center
+              ${pathname === '/bible' ? 'bg-orange-50 text-orange-600' : 'hover:bg-slate-50 text-slate-400'}
+            `}
+            title="Read Bible"
+          >
+            <BookOpen size={20} />
+          </Link>
+
           {/* MUSIC PLAYER WIDGET */}
           {playlist.length > 0 && (
             <div className="relative">
               <button 
                 onClick={() => setIsPlayerOpen(!isPlayerOpen)}
-                className={`p-2 rounded-full transition-all flex items-center justify-center
+                className={`p-1.5 md:p-2 rounded-full transition-all flex items-center justify-center
                   ${isPlaying ? 'bg-indigo-50 text-indigo-600 animate-pulse-slow' : 'hover:bg-slate-50 text-slate-400'}
                 `}
               >
@@ -323,14 +334,13 @@ export default function Navbar() {
                 <div className={`
                   bg-slate-900 rounded-2xl shadow-2xl p-3 border border-slate-800 z-[100] animate-in zoom-in duration-200
                   
-                  /* MOBILE STYLES: Centered & COMPACT (Fixed Width) */
+                  /* MOBILE STYLES */
                   fixed top-24 left-1/2 -translate-x-1/2 w-[85%] max-w-[260px]
                   
-                  /* DESKTOP STYLES: Absolute Top-Right */
+                  /* DESKTOP STYLES */
                   md:absolute md:top-12 md:right-0 md:left-auto md:translate-x-0 md:w-72
                 `}>
                   
-                  {/* CLOSE BUTTON (LEFT) */}
                   <button 
                     onClick={() => setIsPlayerOpen(false)}
                     className="absolute -top-3 -left-3 bg-slate-800 text-white rounded-full p-1.5 border border-slate-700 shadow-md hover:bg-slate-700 transition-colors z-[110]"
@@ -338,13 +348,11 @@ export default function Navbar() {
                     <X size={14} />
                   </button>
 
-                  {/* HEADER (Toggle View on RIGHT) */}
                   <div className="flex justify-between items-center mb-3 border-b border-white/10 pb-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
                       {showPlaylistView ? "Select Track" : "Now Playing"}
                     </span>
                     
-                    {/* BUTTON WITH VISIBLE LABEL ON MOBILE */}
                     <button 
                       onClick={() => setShowPlaylistView(!showPlaylistView)}
                       className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
@@ -357,7 +365,6 @@ export default function Navbar() {
                     </button>
                   </div>
 
-                  {/* VIEW 1: PLAYLIST */}
                   {showPlaylistView ? (
                     <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                       {playlist.map((track, idx) => (
@@ -376,7 +383,6 @@ export default function Navbar() {
                       ))}
                     </div>
                   ) : (
-                    /* VIEW 2: NOW PLAYING CONTROLS (Miniaturized) */
                     <>
                       <div className="flex items-center gap-3 mb-3">
                         <div className={`w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
@@ -392,7 +398,6 @@ export default function Navbar() {
                         </div>
                       </div>
                       
-                      {/* PROGRESS BAR */}
                       <div className="mb-2">
                         <input 
                           type="range" 
@@ -410,8 +415,6 @@ export default function Navbar() {
 
                       <div className="flex items-center justify-between bg-white/5 rounded-xl p-2">
                         <div className="flex items-center gap-2">
-                          
-                          {/* REPEAT BUTTON */}
                           <button 
                             onClick={toggleRepeat} 
                             className={`transition-colors p-1 ${isRepeatOne ? 'text-indigo-400' : 'text-slate-500 hover:text-white'}`}
@@ -419,20 +422,15 @@ export default function Navbar() {
                           >
                              {isRepeatOne ? <Repeat1 size={14} /> : <Repeat size={14} />}
                           </button>
-
                           <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors p-1"><SkipBack size={16} /></button>
-                          
                           <button 
                             onClick={togglePlay}
                             className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
                           >
                             {isLoadingMusic ? <Loader2 size={14} className="animate-spin"/> : (isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5"/>)}
                           </button>
-                          
                           <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors p-1"><SkipForward size={16} /></button>
                         </div>
-                        
-                        {/* Visualizer (Simple bars) */}
                         <div className="flex gap-0.5 items-end h-3">
                           {[1,2,3,4].map((h, i) => (
                             <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 3}px` : '2px', animationDelay: `${i * 0.1}s` }} />
@@ -449,7 +447,7 @@ export default function Navbar() {
           {/* BELL */}
           <button 
             onClick={() => setNotifCount(0)} 
-            className={`relative p-2 rounded-full transition-all hover:bg-slate-50 ${isAnimating ? 'animate-bounce' : ''}`}
+            className={`relative p-1.5 md:p-2 rounded-full transition-all hover:bg-slate-50 ${isAnimating ? 'animate-bounce' : ''}`}
           >
             <Bell size={20} className={notifCount > 0 ? "text-indigo-600" : "text-slate-400"} />
             {notifCount > 0 && (
@@ -463,12 +461,12 @@ export default function Navbar() {
           </button>
 
           {/* PROFILE */}
-          <Link href="/profile" className="w-9 h-9 rounded-full bg-slate-900 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white hover:scale-105 transition-transform cursor-pointer">
+          <Link href="/profile" className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-900 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white hover:scale-105 transition-transform cursor-pointer">
             {initials}
           </Link>
 
           {/* MOBILE MENU BTN */}
-          <button className="md:hidden text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+          <button className="md:hidden p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
