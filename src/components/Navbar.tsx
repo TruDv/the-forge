@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { 
   Menu, X, Bell, Music, Play, Pause, 
   SkipForward, SkipBack, 
-  Volume2, Loader2, Signal
+  Volume2, Loader2, Signal, ListMusic 
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -23,14 +23,21 @@ export default function Navbar() {
   // --- MUSIC PLAYER STATE ---
   const [playlist, setPlaylist] = useState<any[]>([]);
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
+  const [showPlaylistView, setShowPlaylistView] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isLoadingMusic, setIsLoadingMusic] = useState(false);
   
+  // Progress Bar State
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isRestored, setIsRestored] = useState(false); 
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const indexRef = useRef(0); 
+  const isInitialMount = useRef(true); 
 
-  // 1. Fetch User & Initialize Realtime (ROBUST VERSION)
+  // --- 1. INITIALIZATION & REALTIME ---
   useEffect(() => {
     let channel: any;
 
@@ -41,72 +48,77 @@ export default function Navbar() {
         const name = session.user.user_metadata?.full_name || session.user.email;
         if (name) setInitials(name.charAt(0).toUpperCase());
 
-        // --- REALTIME SUBSCRIPTION ---
-        console.log("🔔 Initializing Notification Listener...");
-        
         channel = supabase
           .channel('global_notifications') 
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'messages' },
-            (payload) => {
-              // Check if the message is NOT from me
-              if (payload.new && payload.new.user_id !== session.user.id) {
-                console.log("🔔 Message Alert!");
-                triggerNotification();
-              }
-            }
-          )
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'prayer_replies' },
-            (payload) => {
-              // Check if reply is NOT from me
-              if (payload.new && payload.new.user_id !== session.user.id) {
-                console.log("🔔 Reply Alert!");
-                triggerNotification();
-              }
-            }
-          )
-          .subscribe((status, err) => {
-            console.log("Realtime Status:", status);
-            if (status === 'CHANNEL_ERROR') {
-              console.error("Realtime Error:", err);
-            }
-          });
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+              if (payload.new && payload.new.user_id !== session.user.id) triggerNotification();
+          })
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'prayer_replies' }, (payload) => {
+              if (payload.new && payload.new.user_id !== session.user.id) triggerNotification();
+          })
+          .subscribe();
       }
     }
 
     initSession();
-
-    return () => { 
-      if (channel) supabase.removeChannel(channel); 
-    };
+    return () => { if (channel) supabase.removeChannel(channel); };
   }, []);
 
-  // 2. Fetch Music Playlist & Init Player
+  // --- 2. MUSIC INIT & PERSISTENCE ---
   useEffect(() => {
     async function fetchMusic() {
       const { data } = await supabase.from('music_tracks').select('*').order('created_at', { ascending: false });
+      
       if (data && data.length > 0) {
         setPlaylist(data);
         
+        // RESTORE STATE
+        const savedIndex = localStorage.getItem('forge_track_index');
+        const savedTime = localStorage.getItem('forge_track_time');
+        
+        const initialIndex = savedIndex ? parseInt(savedIndex) : 0;
+        const initialTime = savedTime ? parseFloat(savedTime) : 0;
+        
+        // Validate index
+        const safeIndex = (initialIndex >= 0 && initialIndex < data.length) ? initialIndex : 0;
+
+        setCurrentTrackIndex(safeIndex);
+        indexRef.current = safeIndex;
+        setIsRestored(true);
+
         if (!audioRef.current) {
           audioRef.current = new Audio();
           audioRef.current.volume = 0.4;
+          audioRef.current.src = data[safeIndex].url;
           
-          // Auto-play next track logic
+          // Restore saved timestamp ONCE on load
+          audioRef.current.onloadedmetadata = () => {
+             if (audioRef.current) {
+               setDuration(audioRef.current.duration);
+               
+               if (isInitialMount.current) {
+                 if (initialTime > 0) audioRef.current.currentTime = initialTime;
+                 isInitialMount.current = false;
+               }
+             }
+          };
+
+          // EVENTS
           audioRef.current.onended = () => {
             const nextIndex = (indexRef.current + 1) % data.length;
             playTrackAtIndex(nextIndex, data);
           };
           
+          audioRef.current.ontimeupdate = () => {
+             if(audioRef.current) {
+               setCurrentTime(audioRef.current.currentTime);
+               // Save time constantly
+               localStorage.setItem('forge_track_time', audioRef.current.currentTime.toString());
+             }
+          };
+
           audioRef.current.onwaiting = () => setIsLoadingMusic(true);
           audioRef.current.oncanplay = () => setIsLoadingMusic(false);
-          
-          // Fix for "Empty Src" warning: Check before setting
-          const firstUrl = data[0].url;
-          if (firstUrl) audioRef.current.src = firstUrl;
         }
       }
     }
@@ -117,43 +129,80 @@ export default function Navbar() {
     };
   }, []);
 
-  // Keep Ref in sync with State for the event listener
+  // Sync state to local storage ONLY after restore is done
   useEffect(() => { 
-    indexRef.current = currentTrackIndex; 
-  }, [currentTrackIndex]);
+    if (isRestored) {
+        indexRef.current = currentTrackIndex; 
+        localStorage.setItem('forge_track_index', currentTrackIndex.toString());
+    }
+  }, [currentTrackIndex, isRestored]);
+
 
   const triggerNotification = () => {
     setNotifCount(prev => prev + 1);
     setIsAnimating(true);
-    // Optional: Play a sound effect
-    // const audio = new Audio("/sounds/ping.mp3");
-    // audio.volume = 0.2;
-    // audio.play().catch(() => {});
-    
     setTimeout(() => setIsAnimating(false), 1000);
   };
 
-  // --- MUSIC CONTROLS ---
+  // --- PLAYER ACTIONS ---
+
   const playTrackAtIndex = (index: number, tracks = playlist) => {
     if (!audioRef.current || tracks.length === 0) return;
     
+    isInitialMount.current = false; 
+
     let safeIndex = index;
-    // Loop logic
     if (index >= tracks.length) safeIndex = 0;
     if (index < 0) safeIndex = tracks.length - 1;
 
     setCurrentTrackIndex(safeIndex);
-    indexRef.current = safeIndex;
-
-    const url = tracks[safeIndex].url;
     
-    // Only load if different or ended
-    if (audioRef.current.src !== url || audioRef.current.ended) {
+    const track = tracks[safeIndex];
+    const url = track.url;
+    
+    // Reset time for new songs
+    if (audioRef.current.src !== url) {
       audioRef.current.src = url;
+      audioRef.current.currentTime = 0; 
+      localStorage.setItem('forge_track_time', '0'); 
     }
     
     audioRef.current.play()
-      .then(() => setIsPlaying(true))
+      .then(() => {
+        setIsPlaying(true);
+
+        // --- NEW: LOCK SCREEN CONTROLS (Media Session API) ---
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title,
+            artist: track.artist || "The Forge",
+            album: "The Forge Atmosphere",
+            artwork: [
+              { src: '/logo1.png', sizes: '192x192', type: 'image/png' },
+              { src: '/logo1.png', sizes: '512x512', type: 'image/png' },
+            ]
+          });
+
+          // Handlers for Lock Screen Buttons
+          navigator.mediaSession.setActionHandler('play', () => { 
+            audioRef.current?.play(); 
+            setIsPlaying(true); 
+          });
+          navigator.mediaSession.setActionHandler('pause', () => { 
+            audioRef.current?.pause(); 
+            setIsPlaying(false); 
+          });
+          
+          // Next/Prev Logic for Lock Screen
+          navigator.mediaSession.setActionHandler('previoustrack', () => {
+             playTrackAtIndex(safeIndex - 1, tracks);
+          });
+          navigator.mediaSession.setActionHandler('nexttrack', () => {
+             playTrackAtIndex(safeIndex + 1, tracks);
+          });
+        }
+        // -----------------------------------------------------
+      })
       .catch(e => console.log("Playback prevented:", e));
   };
 
@@ -170,6 +219,26 @@ export default function Navbar() {
 
   const handleNext = () => playTrackAtIndex(currentTrackIndex + 1);
   const handlePrev = () => playTrackAtIndex(currentTrackIndex - 1);
+  
+  const handleSelectTrack = (index: number) => {
+    playTrackAtIndex(index);
+    setShowPlaylistView(false); 
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  };
 
   const currentSong = playlist[currentTrackIndex];
 
@@ -221,47 +290,102 @@ export default function Navbar() {
 
               {/* POPUP PLAYER */}
               {isPlayerOpen && (
-                <div className="absolute top-12 right-0 w-64 bg-slate-900 rounded-2xl shadow-2xl p-4 border border-slate-800 z-[100] animate-in slide-in-from-top-2 duration-200">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
-                      <Music size={16} className="text-white" />
-                    </div>
-                    <div className="overflow-hidden w-full">
-                      <div className="whitespace-nowrap overflow-hidden">
-                        <p className="text-xs font-bold text-white animate-marquee inline-block min-w-full">
-                          {currentSong?.title || "Loading..."} &nbsp; • &nbsp; {currentSong?.title || "Loading..."} &nbsp; • &nbsp;
-                        </p>
-                      </div>
-                      <p className="text-[10px] text-slate-400 truncate">{currentSong?.artist || "The Forge"}</p>
-                    </div>
+                <div className="absolute top-12 right-0 w-72 bg-slate-900 rounded-2xl shadow-2xl p-4 border border-slate-800 z-[100] animate-in slide-in-from-top-2 duration-200">
+                  
+                  {/* HEADER (Toggle View) */}
+                  <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {showPlaylistView ? "Select Track" : "Now Playing"}
+                    </span>
+                    <button 
+                      onClick={() => setShowPlaylistView(!showPlaylistView)}
+                      className="text-slate-400 hover:text-white transition-colors"
+                      title={showPlaylistView ? "Back to Player" : "View Playlist"}
+                    >
+                      {showPlaylistView ? <Music size={14} /> : <ListMusic size={16} />}
+                    </button>
                   </div>
 
-                  <div className="flex items-center justify-between bg-white/5 rounded-xl p-2">
-                    <div className="flex items-center gap-2">
-                      <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors"><SkipBack size={16} /></button>
-                      
-                      <button 
-                        onClick={togglePlay}
-                        className="w-8 h-8 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
-                      >
-                        {isLoadingMusic ? <Loader2 size={14} className="animate-spin"/> : (isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5"/>)}
-                      </button>
-                      
-                      <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors"><SkipForward size={16} /></button>
-                    </div>
-                    
-                    <div className="flex gap-0.5 items-end h-3">
-                      {[1,2,3,4,3,2,1].map((h, i) => (
-                        <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 3}px` : '3px', animationDelay: `${i * 0.1}s` }} />
+                  {/* VIEW 1: PLAYLIST */}
+                  {showPlaylistView ? (
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                      {playlist.map((track, idx) => (
+                        <button 
+                          key={track.id}
+                          onClick={() => handleSelectTrack(idx)}
+                          className={`w-full text-left p-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors
+                            ${idx === currentTrackIndex 
+                              ? 'bg-indigo-600 text-white' 
+                              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                            }`}
+                        >
+                          <span className="truncate max-w-[180px]">{idx + 1}. {track.title}</span>
+                          {idx === currentTrackIndex && isPlaying && <Signal size={12} className="animate-pulse"/>}
+                        </button>
                       ))}
                     </div>
-                  </div>
+                  ) : (
+                    /* VIEW 2: NOW PLAYING CONTROLS */
+                    <>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className={`w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 ${isPlaying ? 'animate-pulse' : ''}`}>
+                          <Music size={20} className="text-white" />
+                        </div>
+                        <div className="overflow-hidden w-full">
+                          <div className="whitespace-nowrap overflow-hidden">
+                            <p className="text-sm font-bold text-white animate-marquee inline-block min-w-full">
+                              {currentSong?.title || "Loading..."} &nbsp; • &nbsp; {currentSong?.title || "Loading..."} &nbsp; • &nbsp;
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-slate-400 truncate">{currentSong?.artist || "The Forge"}</p>
+                        </div>
+                      </div>
+                      
+                      {/* PROGRESS BAR */}
+                      <div className="mb-3">
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max={duration || 100} 
+                          value={currentTime} 
+                          onChange={handleSeek}
+                          className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+                        />
+                        <div className="flex justify-between mt-1 text-[9px] font-medium text-slate-400">
+                          <span>{formatTime(currentTime)}</span>
+                          <span>{formatTime(duration)}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-white/5 rounded-xl p-3">
+                        <div className="flex items-center gap-3">
+                          <button onClick={handlePrev} className="text-slate-400 hover:text-white transition-colors"><SkipBack size={18} /></button>
+                          
+                          <button 
+                            onClick={togglePlay}
+                            className="w-10 h-10 rounded-full bg-white text-slate-900 flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-colors"
+                          >
+                            {isLoadingMusic ? <Loader2 size={16} className="animate-spin"/> : (isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5"/>)}
+                          </button>
+                          
+                          <button onClick={handleNext} className="text-slate-400 hover:text-white transition-colors"><SkipForward size={18} /></button>
+                        </div>
+                        
+                        {/* Visualizer (Simple bars) */}
+                        <div className="flex gap-0.5 items-end h-4">
+                          {[1,2,3,4].map((h, i) => (
+                            <div key={i} className={`w-0.5 bg-indigo-500 rounded-full ${isPlaying ? 'animate-music-bar' : 'h-1'}`} style={{ height: isPlaying ? `${h * 4}px` : '3px', animationDelay: `${i * 0.1}s` }} />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* BELL (Notifications) */}
+          {/* BELL */}
           <button 
             onClick={() => setNotifCount(0)} 
             className={`relative p-2 rounded-full transition-all hover:bg-slate-50 ${isAnimating ? 'animate-bounce' : ''}`}
@@ -289,7 +413,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* MOBILE MENU DRAWER */}
+      {/* MOBILE MENU */}
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4 animate-in slide-in-from-top-5 duration-200">
           {navLinks.map((link) => (

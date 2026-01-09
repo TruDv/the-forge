@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
   Mic, Square, Trash2, Play, Pause, MoreVertical, Edit2, Check,
-  CornerUpLeft 
+  CornerUpLeft, AtSign // <--- Icon for Mentions
 } from 'lucide-react';
 import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 
@@ -16,6 +16,11 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
+  
+  // --- MENTION STATE (NEW) ---
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [showMentionList, setShowMentionList] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
   
   // --- REPLY & EDIT STATE ---
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,13 +38,16 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); 
 
+  // Body Scroll Lock
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
 
+  // Audio Init
   useEffect(() => {
     const sentUrl = "/sounds/sent.mp3"; 
     const receivedUrl = "/sounds/received.mp3"; 
@@ -59,6 +67,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
+  // 1. Fetch Data (Messages + Users)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -68,6 +77,7 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     };
     fetchTopic();
 
+    // Fetch Messages
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -77,6 +87,13 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
       if (data) setMessages(data);
     };
     fetchMessages();
+
+    // NEW: Fetch Users for Tagging
+    const fetchUsers = async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name').order('full_name', { ascending: true });
+      if (data) setAllUsers(data);
+    };
+    fetchUsers();
 
     const channel = supabase
       .channel('upper_room_chat')
@@ -106,16 +123,19 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
 
   // --- ACTIONS ---
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!newMessage.trim() || !user) return;
     
     setIsSending(true);
     setShowEmojiPicker(false);
+    setShowMentionList(false); // Close mentions
+    
     const text = newMessage;
     const parentId = replyingTo ? replyingTo.id : null;
     
     setNewMessage('');
+    if(textareaRef.current) textareaRef.current.style.height = 'auto'; 
     setReplyingTo(null);
     playSound('send');
 
@@ -154,8 +174,58 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
     setActiveMenuId(null);
   };
 
+  // --- MENTION LOGIC ---
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setNewMessage(val);
+    
+    // Resize textarea
+    e.target.style.height = 'auto';
+    e.target.style.height = `${e.target.scrollHeight}px`;
+
+    // Detect @Mention
+    const lastWord = val.split(/[\s\n]+/).pop(); // Get last word typed
+    if (lastWord && lastWord.startsWith('@')) {
+      setMentionQuery(lastWord.slice(1)); // Remove '@' for search
+      setShowMentionList(true);
+    } else {
+      setShowMentionList(false);
+    }
+  };
+
+  const insertMention = (name: string) => {
+    // Replace the last word (the incomplete tag) with the full name
+    const words = newMessage.split(/([\s\n]+)/); // Split keeping delimiters
+    const lastWordIndex = words.length - 1;
+    words[lastWordIndex] = `@${name} `; // Replace last word with tag + space
+    
+    const newText = words.join('');
+    setNewMessage(newText);
+    setShowMentionList(false);
+    
+    // Focus back on textarea
+    if (textareaRef.current) textareaRef.current.focus();
+  };
+
+  // Filter users based on query
+  const filteredUsers = allUsers.filter(u => 
+    u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())
+  );
+
+  // Keyboard Handler
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isMobile = window.innerWidth < 768;
+    if (e.key === 'Enter') {
+      if (e.shiftKey) return;
+      if (!isMobile) {
+        e.preventDefault(); 
+        handleSendMessage(); 
+      }
+    }
+  };
+
   const renderTextWithMentions = (text: string) => {
-    const parts = text.split(/(@\w+)/g);
+    const parts = text.split(/(@\w+(?:\s\w+)?)/g); // Regex to catch names with spaces too if needed
     return parts.map((part, i) => 
       part.startsWith('@') ? <span key={i} className="text-indigo-200 font-bold bg-indigo-900/10 rounded px-0.5">{part}</span> : part
     );
@@ -260,10 +330,6 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                         </div>
                         
                         {/* MESSAGE BUBBLE */}
-                        {/* Logic: 
-                            - isMe: padding-left 8 (for left menu)
-                            - !isMe: padding-right 8 (for right menu) 
-                        */}
                         <div className={`relative rounded-2xl text-sm leading-relaxed shadow-sm transition-all 
                           ${isMe 
                             ? 'bg-indigo-600 text-white rounded-br-none pl-8 pr-4 py-3' 
@@ -272,7 +338,6 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                         >
                           {!isMe && <p className="text-[9px] font-black text-indigo-500 uppercase mb-1">{msg.author_name}</p>}
                           
-                          {/* REPLY QUOTE */}
                           {msg.reply_to && (
                             <div className={`mb-2 p-2 rounded-lg text-xs border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
                               <p className="font-bold text-[10px] mb-0.5">{msg.reply_to.author_name}</p>
@@ -280,7 +345,6 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                             </div>
                           )}
 
-                          {/* EDITING vs VIEW */}
                           {isEditing ? (
                              <div className="flex flex-col gap-2 min-w-[200px]">
                                 <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-800 bg-white rounded p-2 text-base md:text-sm outline-none focus:ring-2 ring-orange-500" rows={2}/>
@@ -294,15 +358,14 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                                {msg.type === 'audio' ? (
                                   <div className="flex items-center gap-2 min-w-[150px]">
                                      <div className={`p-2 rounded-full ${isMe ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'}`}><Play size={14} fill="currentColor" /></div>
-                                     <audio controls src={msg.media_url} className="h-8 w-48 rounded-lg" />
+                                     <audio controls src={msg.media_url || undefined} className="h-8 w-48 rounded-lg" />
                                   </div>
                                ) : (
-                                  <p>{renderTextWithMentions(msg.content)}</p>
+                                  <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
                                )}
                              </>
                           )}
 
-                          {/* --- OPTIONS MENU (Visible on Mobile) --- */}
                           {!isEditing && (
                             <div className={`absolute top-2 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity
                               ${isMe ? 'left-2' : 'right-2'}`}
@@ -314,17 +377,13 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                                 <MoreVertical size={14} />
                               </button>
                               
-                              {/* Dropdown Logic */}
                               {activeMenuId === msg.id && (
                                 <div className={`absolute top-6 bg-white shadow-xl rounded-xl overflow-hidden border border-slate-100 z-50 w-28 flex flex-col animate-in fade-in zoom-in duration-200
-                                  ${isMe ? 'left-0' : 'right-0'}`} // Anchor menu correctly
+                                  ${isMe ? 'left-0' : 'right-0'}`}
                                 >
-                                  {/* REPLY (For Everyone) */}
                                   <button onClick={() => handleReply(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 hover:text-indigo-600 flex items-center gap-2">
                                     <CornerUpLeft size={10} /> Reply
                                   </button>
-
-                                  {/* EDIT/DELETE (Only for Me) */}
                                   {isMe && msg.type === 'text' && (
                                     <button onClick={() => startEditing(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 hover:text-indigo-600 flex items-center gap-2 border-t border-slate-50">
                                       <Edit2 size={10} /> Edit
@@ -355,6 +414,27 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
             {/* Input Area */}
             <div className="p-4 bg-white border-t border-slate-100 shrink-0 relative pb-safe">
               
+              {/* --- MENTION POPUP --- */}
+              {showMentionList && filteredUsers.length > 0 && (
+                <div className="absolute bottom-20 left-4 bg-white shadow-2xl rounded-2xl border border-slate-200 z-50 w-64 max-h-48 overflow-y-auto animate-in slide-in-from-bottom-2">
+                  <div className="p-2 bg-indigo-50 border-b border-indigo-100 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                    Mentioning...
+                  </div>
+                  {filteredUsers.map((u) => (
+                    <button 
+                      key={u.id}
+                      onClick={() => insertMention(u.full_name)}
+                      className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 flex items-center gap-2 transition-colors border-b border-slate-50 last:border-0"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">
+                        {u.full_name.charAt(0)}
+                      </div>
+                      <span className="truncate">{u.full_name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* REPLY INDICATOR */}
               {replyingTo && (
                 <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-xl px-4 py-2 mb-2 -mt-2 mx-1 border-b-0 animate-in slide-in-from-bottom-2">
@@ -381,20 +461,24 @@ export default function UpperRoom({ user, profileName }: { user: any, profileNam
                    </div>
                 </div>
               ) : (
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                  <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 border-slate-200 text-slate-400 hover:text-indigo-500 transition-colors"><Smile size={20} /></button>
-                  <input 
-                    type="text" 
+                <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
+                  <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 border-slate-200 text-slate-400 hover:text-indigo-500 transition-colors h-11"><Smile size={20} /></button>
+                  
+                  <textarea 
+                    ref={textareaRef}
                     placeholder="Speak to the brethren..." 
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base md:text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base md:text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all resize-none max-h-32"
+                    rows={1}
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={handleTextChange}
+                    onKeyDown={handleKeyDown}
                     onFocus={() => setShowEmojiPicker(false)}
                   />
+                  
                   {newMessage.trim() ? (
-                    <button disabled={isSending} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition-all shadow-lg">{isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}</button>
+                    <button disabled={isSending} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 transition-all shadow-lg h-11">{isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}</button>
                   ) : (
-                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-xl hover:bg-orange-600 transition-all shadow-lg"><Mic size={20} /></button>
+                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-xl hover:bg-orange-600 transition-all shadow-lg h-11"><Mic size={20} /></button>
                   )}
                 </form>
               )}
