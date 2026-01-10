@@ -11,7 +11,6 @@ import {
   Volume2, Loader2, Signal, ListMusic,
   Repeat, Repeat1, BookOpen 
 } from 'lucide-react';
-import MobileTabs from "@/components/MobileTabs"; // Import here
 
 export default function Navbar() {
   const pathname = usePathname();

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Navbar from '@/components/Navbar';
+import MobileTabs from '@/components/MobileTabs'; 
 import { usePathname } from 'next/navigation';
 
 export default function NavbarWrapper() {
@@ -11,29 +12,30 @@ export default function NavbarWrapper() {
   const pathname = usePathname();
 
   useEffect(() => {
-    // 1. Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    // 2. Listen for login/logout changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Don't show navbar if:
-  // - We are still loading
-  // - There is no user logged in
-  // - We are on the Login or Signup pages
   const isAuthPage = pathname?.startsWith('/auth');
   
+  // Hide everything if not logged in, loading, or on login/signup page
   if (loading || !session || isAuthPage) {
     return null;
   }
 
-  return <Navbar />;
+  return (
+    <>
+      <Navbar />
+      <MobileTabs />
+    </>
+  );
 }
