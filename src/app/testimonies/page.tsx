@@ -5,11 +5,13 @@ import { supabase } from '@/lib/supabase';
 import { 
   Sparkles, Plus, X, Quote, Calendar, 
   MessageCircle, Heart, User, Shield, Ghost, 
-  Loader2, Flame, CheckCircle2, Tag, Send, Trash2, 
+  Loader2, Flame, CheckCircle2, Tag, ChevronRight, Send, Trash2, 
   Hand // Standard Lucide Hand
 } from 'lucide-react';
+import Link from 'next/link'; // <--- ADD THIS LINE HERE
 
 const CATEGORIES = ["Healing", "Provision", "Salvation", "Deliverance", "Faith", "Family"];
+
 
 // --- 1. NEW COMPONENT: THE FLOATING CLAP VISUAL ---
 // This combines two outline hands to create a "Clapping" effect
@@ -184,6 +186,12 @@ export default function Testimonies() {
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
         <div className="max-w-6xl mx-auto relative z-10">
+
+          {/* --- ADDED THIS PART BELOW --- */}
+    <Link href="/prayers" className="md:hidden inline-flex items-center gap-2 text-slate-500 hover:text-white font-bold text-[10px] uppercase tracking-widest mb-6 transition-colors">
+      <ChevronRight className="rotate-180 text-orange-500" size={14} /> Back to Prayer Wall
+    </Link>
+
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
             <div>
               <div className="flex items-center gap-2 mb-2">

@@ -5,13 +5,14 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { 
   Heart, MessageCircle, Send, Star, 
-  Flame, ArrowRight, Users 
+  Flame, ArrowRight, Users, Sparkles 
 } from 'lucide-react';
 
 export default function PrayerPage() {
   const [request, setRequest] = useState('');
   const [isPosting, setIsPosting] = useState(false);
   const [prayers, setPrayers] = useState<any[]>([]);
+  // Kept 'view' state internally for logic, but removed the UI tabs
   const [view, setView] = useState<'all' | 'testimonies'>('all');
   
   // Watchman State (Live Count)
@@ -26,12 +27,11 @@ export default function PrayerPage() {
   useEffect(() => {
     fetchPrayers();
     fetchUser();
-    fetchWatchmanCount(); // <--- Get the live count for the banner
+    fetchWatchmanCount();
 
     const saved = localStorage.getItem('user_prayed_ids');
     if (saved) setMyPrayedIds(JSON.parse(saved));
 
-    // Subscribe to Watchman updates so the banner number moves live
     const channel = supabase.channel('prayer_page_watchman')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'watchman_logs' }, () => {
          fetchWatchmanCount();
@@ -51,7 +51,6 @@ export default function PrayerPage() {
     }
   }
 
-  // New: Get count for the banner
   async function fetchWatchmanCount() {
     const { count } = await supabase.from('watchman_logs').select('*', { count: 'exact', head: true });
     setActiveWatchmen(count || 0);
@@ -63,6 +62,7 @@ export default function PrayerPage() {
       .select(`*, profiles:user_id ( full_name, avatar_url )`)
       .order('created_at', { ascending: false });
     
+    // Logic remains: only filter if view is explicitly changed (it's 'all' by default now)
     if (view === 'testimonies') query = query.eq('is_testimony', true);
 
     const { data: prayerData, error } = await query;
@@ -72,7 +72,6 @@ export default function PrayerPage() {
       if (simpleData) setPrayers(simpleData);
     } else if (prayerData) {
       setPrayers(prayerData);
-      // Fetch replies...
       const prayerIds = prayerData.map(p => p.id);
       if (prayerIds.length > 0) {
         const { data: replyData } = await supabase.from('prayer_replies').select('*').in('prayer_id', prayerIds).order('created_at', { ascending: true });
@@ -138,10 +137,9 @@ export default function PrayerPage() {
   return (
     <main className="max-w-4xl mx-auto px-4 md:px-6 py-8 bg-slate-50 min-h-screen font-sans">
       
-      {/* --- FEATURED: THE WATCHMAN BANNER --- */}
-      <Link href="/watchman">
+      {/* --- FEATURED: THE WATCHMAN BANNER (COMMENTED OFF) --- */}
+      {/* <Link href="/watchman">
         <div className="relative overflow-hidden bg-slate-900 rounded-[2rem] p-8 mb-12 group cursor-pointer shadow-2xl shadow-slate-200 hover:shadow-slate-300 transition-all duration-500">
-          {/* Animated Background Glow */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 blur-[100px] opacity-20 rounded-full group-hover:opacity-30 transition-opacity" />
           
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -170,36 +168,63 @@ export default function PrayerPage() {
           </div>
         </div>
       </Link>
+      */}
 
-      {/* Header & Filters */}
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Prayer Wall</h1>
-          <p className="text-slate-500 mt-1 font-medium text-sm">Post requests, share testimonies, and stand in gap.</p>
-        </div>
-        <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-          <button onClick={() => setView('all')} className={`px-5 py-2 rounded-lg text-xs font-bold uppercase transition-all ${view === 'all' ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}>Requests</button>
-          <button onClick={() => setView('testimonies')} className={`px-5 py-2 rounded-lg text-xs font-bold uppercase transition-all ${view === 'testimonies' ? 'bg-orange-50 text-orange-600' : 'text-slate-400 hover:text-slate-600'}`}>Testimonies</button>
+      {/* --- NEW: THE TESTIMONY CALL TO ACTION --- */}
+      <div className="bg-gradient-to-br from-orange-500 to-rose-600 rounded-[2rem] p-1 shadow-xl mb-8">
+        <div className="bg-white/95 backdrop-blur-sm rounded-[1.9rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center shrink-0">
+              <Sparkles className="text-orange-600 animate-pulse" size={28} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-tight">Has God answered your cry?</h3>
+              <p className="text-slate-500 text-sm font-medium leading-relaxed mt-1">
+                Share your breakthrough in the <span className="text-orange-600 font-bold italic">Hall of Victory</span> and ignite someone else's faith.
+              </p>
+            </div>
+          </div>
+          
+          <Link href="/testimonies" className="w-full md:w-auto bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition-all shadow-lg text-center flex items-center justify-center gap-2">
+            Go to Hall of Victory <ArrowRight size={16} />
+          </Link>
         </div>
       </div>
 
-      {/* Input Box */}
-      {view === 'all' && (
-        <div className="bg-white rounded-[2rem] p-1 shadow-sm border border-slate-200 mb-10 transition-all focus-within:ring-4 focus-within:ring-indigo-50/50">
-          <textarea 
-            value={request} 
-            onChange={(e) => setRequest(e.target.value)} 
-            placeholder="How can we stand in faith with you today?" 
-            className="w-full bg-transparent rounded-t-[1.8rem] p-6 text-slate-700 placeholder:text-slate-300 focus:outline-none min-h-[100px] resize-none text-lg font-medium" 
-          />
-          <div className="flex justify-between items-center bg-slate-50 rounded-[1.8rem] px-6 py-3">
-            <span className="text-xs text-slate-400 font-bold uppercase">Public Request</span>
-            <button onClick={handleSubmit} disabled={isPosting || !request.trim()} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-200">
-              {isPosting ? 'Sending...' : <><Send size={14} /> Post Prayer</>}
-            </button>
+      {/* Header Section with Live Status Pill */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">Prayer Wall</h1>
+          
+          {/* Small Live Watchman Indicator */}
+          <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-100 px-2.5 py-1 rounded-full shadow-sm">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+            </span>
+            <span className="text-[10px] font-black text-orange-600 uppercase tracking-wider">
+              {activeWatchmen} Watchmen
+            </span>
           </div>
         </div>
-      )}
+        <p className="text-slate-500 font-medium text-sm">Post requests and stand in the gap with the brethren.</p>
+      </div>
+
+      {/* Input Box - Always Visible */}
+      <div className="bg-white rounded-[2rem] p-1 shadow-sm border border-slate-200 mb-10 transition-all focus-within:ring-4 focus-within:ring-indigo-50/50">
+        <textarea 
+          value={request} 
+          onChange={(e) => setRequest(e.target.value)} 
+          placeholder="How can we stand in faith with you today?" 
+          className="w-full bg-transparent rounded-t-[1.8rem] p-6 text-slate-700 placeholder:text-slate-300 focus:outline-none min-h-[100px] resize-none text-lg font-medium" 
+        />
+        <div className="flex justify-between items-center bg-slate-50 rounded-[1.8rem] px-6 py-3">
+          <span className="text-xs text-slate-400 font-bold uppercase">Public Request</span>
+          <button onClick={handleSubmit} disabled={isPosting || !request.trim()} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-200">
+            {isPosting ? 'Sending...' : <><Send size={14} /> Post Prayer</>}
+          </button>
+        </div>
+      </div>
 
       {/* Feed */}
       <div className="space-y-6">

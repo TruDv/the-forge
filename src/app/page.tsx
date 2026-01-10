@@ -866,8 +866,10 @@ export default function Home() {
           </div>
         )}
 
-        {/* THE UPPER ROOM (Global Chat) */}
-        {user && <UpperRoom user={user} profileName={firstName} />}
+{/* THE UPPER ROOM (Global Chat) - Visible only on Desktop */}
+        <div className="hidden md:block">
+          {user && <UpperRoom user={user} profileName={firstName} isFullPage={false} />}
+        </div>
 
       </main>
     </div>

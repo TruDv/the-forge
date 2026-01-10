@@ -101,3 +101,15 @@ body {
     100% { transform: translateX(-50%); } /* Move half way (since we duplicate content) */
   }
 }
+
+/* globals.css */
+@layer base {
+  :root {
+    --safe-area-inset-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Prevents content from hiding behind the tabs */
+.pb-safe-area {
+  padding-bottom: calc(1rem + var(--safe-area-inset-bottom));
+}

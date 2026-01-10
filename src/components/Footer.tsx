@@ -10,7 +10,11 @@ export default function Footer() {
 
   return (
     <>
-      <footer className="bg-slate-950 border-t border-white/5 pt-16 pb-8 px-6">
+      {/* FOOTER CONTAINER: 
+          'hidden' on mobile (default) 
+          'md:block' shows it on Desktop/Tablets 
+      */}
+      <footer className="hidden md:block bg-slate-950 border-t border-white/5 pt-16 pb-8 px-6">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
             
@@ -44,7 +48,6 @@ export default function Footer() {
               <h4 className="text-white font-black uppercase text-xs tracking-widest">Navigation</h4>
               <ul className="space-y-4">
                 <li>
-                  {/* ABOUT LINK (Triggers Modal) */}
                   <button 
                     onClick={() => setIsAboutModalOpen(true)}
                     className="text-slate-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2"
@@ -103,7 +106,9 @@ export default function Footer() {
         </div>
       </footer>
 
-      {/* --- ABOUT MODAL (No Sign Up Button) --- */}
+      {/* MODAL SECTION: 
+          Outside the footer so it works even when footer is hidden on mobile 
+      */}
       {isAboutModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div 
@@ -129,7 +134,6 @@ export default function Footer() {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-8 md:p-12 space-y-10 scrollbar-thin scrollbar-thumb-slate-200 pb-16">
               
-              {/* --- 00. WHO WE ARE --- */}
               <section className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
                 <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                   <span className="text-orange-500">00.</span> Who We Are
@@ -149,7 +153,6 @@ export default function Footer() {
 
               <div className="h-px bg-slate-100 w-full" />
 
-              {/* --- 01. THE CHALLENGE --- */}
               <section>
                 <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                   <span className="text-orange-500">01.</span> The Challenge of Faith
@@ -164,7 +167,6 @@ export default function Footer() {
 
               <div className="h-px bg-slate-100 w-full" />
 
-              {/* --- 02. FORGED IN FIRE --- */}
               <section>
                 <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                   <span className="text-orange-500">02.</span> Forged in Fire
@@ -195,7 +197,6 @@ export default function Footer() {
 
               <div className="h-px bg-slate-100 w-full" />
 
-              {/* --- 03. THE MANDATE --- */}
               <section>
                 <h3 className="text-2xl font-black text-slate-900 mb-4 flex items-center gap-2">
                   <span className="text-orange-500">03.</span> The Mandate
@@ -208,7 +209,6 @@ export default function Footer() {
                 </p>
               </section>
 
-              {/* --- 04. THE PROMISE --- */}
               <section className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                 <h3 className="text-xl font-black text-orange-900 mb-3">The Promise</h3>
                 <p className="text-orange-900/80 italic font-serif leading-relaxed mb-4">
@@ -216,7 +216,6 @@ export default function Footer() {
                 </p>
               </section>
 
-              {/* --- CLOSING --- */}
               <section className="text-center pt-8">
                 <p className="text-slate-500 font-medium text-sm uppercase tracking-widest mb-2">To the King Eternal</p>
                 <p className="text-slate-900 font-bold">

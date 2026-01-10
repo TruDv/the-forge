@@ -11,6 +11,7 @@ import {
   Volume2, Loader2, Signal, ListMusic,
   Repeat, Repeat1, BookOpen 
 } from 'lucide-react';
+import MobileTabs from "@/components/MobileTabs"; // Import here
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -277,7 +278,7 @@ export default function Navbar() {
     { name: 'Library', href: '/library' },
     { name: 'Fasting', href: '/fasting' },
     { name: 'Prayers', href: '/prayers' },
-    { name: 'Testimonies', href: '/testimonies' },
+    { name: 'Watchman', href: '/watchman' },
   ];
 
   return (
@@ -291,17 +292,18 @@ export default function Navbar() {
           </div>
         </Link>
         
-        {/* DESKTOP NAV */}
-        <div className="hidden md:flex space-x-8 font-medium text-sm">
-          {navLinks.map((link) => (
-            <Link 
-              key={link.name} href={link.href} 
-              className={`${pathname === link.href ? 'text-indigo-600 border-b-2 border-indigo-600 pb-1' : 'text-slate-500 hover:text-indigo-600 transition'}`}
-            >
-              {link.name}
-            </Link>
-          ))}
-        </div>
+{/* DESKTOP NAV */}
+<div className="hidden lg:flex space-x-8 font-medium text-sm ml-8">
+  {navLinks.map((link) => (
+    <Link 
+      key={link.name} 
+      href={link.href} 
+      className={`${pathname === link.href ? 'text-indigo-600 border-b-2 border-indigo-600 pb-1' : 'text-slate-500 hover:text-indigo-600 transition'}`}
+    >
+      {link.name}
+    </Link>
+  ))}
+</div>
 
         {/* ACTIONS - Reduced gap on mobile for tighter layout */}
         <div className="flex items-center gap-1 md:gap-4">
@@ -465,23 +467,24 @@ export default function Navbar() {
             {initials}
           </Link>
 
-          {/* MOBILE MENU BTN */}
-          <button className="md:hidden p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+      {/* MOBILE MENU BTN - Hidden on mobile, only visible on desktop if needed */}
+<button className="hidden md:block p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+  {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+</button>
         </div>
       </div>
 
-      {/* MOBILE MENU */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4 animate-in slide-in-from-top-5 duration-200">
-          {navLinks.map((link) => (
-            <Link key={link.name} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className={`text-sm font-bold py-2 ${pathname === link.href ? 'text-indigo-600' : 'text-slate-600 hover:text-indigo-600'}`}>
-              {link.name}
-            </Link>
-          ))}
-        </div>
-      )}
+   {/* MOBILE MENU - Now strictly desktop only if triggered */}
+{isMobileMenuOpen && (
+  <div className="hidden lg:flex border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4">
+    {navLinks.map((link) => (
+      <Link key={link.name} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className={`text-sm font-bold py-2 ${pathname === link.href ? 'text-indigo-600' : 'text-slate-600 hover:text-indigo-600'}`}>
+        {link.name}
+      </Link>
+    ))}
+  </div>
+)}
     </nav>
   );
 }
+
