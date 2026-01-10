@@ -20,6 +20,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
   
+  // --- MULTI-ROOM & DM STATE ---
   const [currentRoom, setCurrentRoom] = useState<RoomType>('general');
   const [fastingPreaching, setFastingPreaching] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -27,6 +28,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [searchTerm, setSearchTerm] = useState('');
   const [hasNewDM, setHasNewDM] = useState(false);
 
+  // --- UI & INTERACTION STATE ---
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
+  // --- AUDIO RECORDING STATE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -45,26 +48,22 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null); 
 
-  // EFFECT: Handle iOS Viewport Resizing
+  // --- iOS VIEWPORT & BODY SCROLL LOCK ---
   useEffect(() => {
     if (!isOpen) return;
     
-    const handleResize = () => {
-      // Force scroll to top to prevent the header from staying "pushed up"
-      window.scrollTo(0, 0);
+    // Prevent background scrolling on iOS
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+
+    return () => {
+      document.body.style.overflow = originalStyle;
+      document.body.style.position = '';
+      document.body.style.width = '';
     };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-    }
-    return () => window.visualViewport?.removeEventListener('resize', handleResize);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && !isFullPage) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = 'unset';
-    return () => { document.body.style.overflow = 'unset'; };
-  }, [isOpen, isFullPage]);
 
   // Sound setup
   useEffect(() => {
@@ -79,6 +78,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
+  // --- DATA FETCHING & REALTIME ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -182,6 +182,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen, editingId, replyingTo]);
 
+  // --- ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user) return;
@@ -247,13 +248,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (textareaRef.current) textareaRef.current.focus();
   };
 
-  const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
-  const filteredDirectory = allUsers.filter(u => u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 768) { e.preventDefault(); handleSendMessage(); }
-  };
-
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -299,212 +293,222 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     return parts.map((part, i) => part.startsWith('@') ? <span key={i} className="text-indigo-600 font-bold bg-indigo-50 rounded px-0.5">{part}</span> : part);
   };
 
+  const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
+  const filteredDirectory = allUsers.filter(u => u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
+
   return (
     <>
       {!isOpen && !isFullPage && (
-        <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110">
+        <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110 active:scale-95">
           <MessageCircle size={28} fill="currentColor" />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
         </button>
       )}
 
       {isOpen && (
-        <div className={isFullPage ? "h-full w-full flex flex-col fixed inset-0" : "fixed inset-0 z-[100] flex justify-end"}>
-          {!isFullPage && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsOpen(false)} />}
-
-          {/* FIXED: Dynamic Viewport Height (100dvh) for iPhone */}
-          <div className={`relative bg-white flex flex-col transition-all overflow-hidden ${isFullPage ? 'w-full h-[100dvh]' : 'w-full max-w-md h-[100dvh] shadow-2xl animate-in slide-in-from-right duration-300'}`}>
-            
-            {/* Header stays locked at top */}
-            <div className="shrink-0 z-50">
-                <div className="bg-slate-950 px-2 pt-2">
-                   <div className="flex bg-white/5 p-1 rounded-xl gap-1">
-                      <button onClick={() => setCurrentRoom('general')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                        <Globe size={14} /> Fellowship
-                      </button>
-                      <button onClick={() => setCurrentRoom('fasting')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                        <Flame size={14} /> Altar
-                      </button>
-                      <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                        <Mail size={14} /> DMs
-                        {hasNewDM && currentRoom !== 'private' && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                          </span>
-                        )}
-                      </button>
-                   </div>
-                </div>
-
-                <div className="bg-slate-900 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {currentRoom === 'private' && selectedRecipient && (
-                      <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg"><X size={14}/></button>
-                    )}
-                    <h3 className="text-white font-black italic uppercase text-sm flex items-center gap-2">
-                      {currentRoom === 'private' && selectedRecipient ? (
-                        <span className="flex items-center gap-2 text-emerald-400">
-                           <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] flex items-center justify-center font-black">{selectedRecipient.full_name.charAt(0)}</div>
-                           {selectedRecipient.full_name}
-                        </span>
-                      ) : (
-                        <>
-                          {currentRoom === 'general' && <><Sparkles size={16} className="text-indigo-400"/> Upper Room</>}
-                          {currentRoom === 'fasting' && <><Flame size={16} className="text-orange-500"/> Altar</>}
-                          {currentRoom === 'private' && <><Mail size={16} className="text-emerald-400"/> Sanctuary</>}
-                        </>
-                      )}
-                    </h3>
-                  </div>
-                  {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white p-2"><X size={24} /></button>}
-                </div>
-            </div>
-
-            <div className="flex-1 relative flex flex-col overflow-hidden">
-              {currentRoom === 'private' && !selectedRecipient && (
-                <div className="absolute inset-0 bg-white z-[110] flex flex-col">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                      <input type="text" placeholder="Find a brother..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-[16px] focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
-                    {unreadSenders.length > 0 && !searchTerm && (
-                      <div className="mb-6">
-                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">New Messages</p>
-                        {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
-                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(prev => prev.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm animate-pulse mb-2 text-left">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div>
-                              <div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Click to read message</span></div>
-                            </div>
-                            <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">The Brethren</p>
-                    {filteredDirectory.filter(u => !unreadSenders.includes(u.id)).map(u => (
-                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:bg-slate-50 transition-all group">
-                        <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 group-hover:bg-emerald-500 group-hover:text-white">{u.full_name.charAt(0)}</div><span className="font-bold text-slate-700">{u.full_name}</span></div>
-                        <UserPlus size={18} className="text-slate-300 group-hover:text-emerald-500" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {currentRoom === 'fasting' && fastingPreaching && (
-                <div className="bg-orange-50 border-b border-orange-100 p-4 shrink-0 relative overflow-hidden">
-                  <Quote className="absolute top-2 right-2 opacity-5 text-orange-900" size={40} />
-                  <span className="bg-orange-200 text-orange-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase mb-2 inline-block">Today's Charge</span>
-                  <p className="text-xs text-orange-900 font-serif italic leading-relaxed line-clamp-2">"{fastingPreaching}"</p>
-                </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 overscroll-contain">
-                {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50"><MessageCircle size={48} className="mb-2" /><p className="text-sm font-bold uppercase">Room is Quiet</p></div>
-                ) : (
-                  messages.map((msg, index) => {
-                    const isMe = msg.user_id === user.id;
-                    const isEditing = editingId === msg.id;
-                    return (
-                      <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group`}>
-                        <div className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black uppercase text-white shrink-0 ${isMe ? 'bg-indigo-500' : 'bg-slate-400'}`}>{msg.author_name?.charAt(0)}</div>
-                          <div className={`relative rounded-2xl text-sm transition-all ${isMe ? 'bg-indigo-600 text-white rounded-br-none pl-8 pr-4 py-3 shadow-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none pr-8 pl-4 py-3 shadow-sm'}`}>
-                            {!isMe && <p className="text-[9px] font-black text-indigo-500 uppercase mb-1">{msg.author_name}</p>}
-                            {msg.reply_to && (
-                              <div className={`mb-2 p-2 rounded-lg text-xs border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
-                                <p className="font-bold text-[10px] mb-0.5">{msg.reply_to.author_name}</p>
-                                <p className="line-clamp-1 italic opacity-80">{msg.reply_to.type === 'audio' ? '🎵 Voice Note' : msg.reply_to.content}</p>
-                              </div>
-                            )}
-                            {isEditing ? (
-                               <div className="flex flex-col gap-2 min-w-[200px]">
-                                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 bg-white rounded p-2 text-[16px] outline-none ring-2 ring-orange-500" rows={2}/>
-                                  <div className="flex justify-end gap-2"><button onClick={() => setEditingId(null)} className="text-xs">Cancel</button><button onClick={() => saveEdit(msg.id)} className="bg-white text-indigo-600 px-2 py-1 rounded text-xs font-bold"><Check size={12}/> Save</button></div>
-                               </div>
-                            ) : (
-                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-8 w-44" /> : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
-                            )}
-                            {!isEditing && (
-                              <div className={`absolute top-2 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ${isMe ? 'left-2' : 'right-2'}`}>
-                                <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`p-1 hover:bg-black/10 rounded-full ${isMe ? 'text-white/60' : 'text-slate-300'}`}><MoreVertical size={14} /></button>
-                                {activeMenuId === msg.id && (
-                                  <div className={`absolute top-6 bg-white shadow-xl rounded-xl border z-50 w-36 flex flex-col ${isMe ? 'left-0' : 'right-0'}`}>
-                                    <button onClick={() => handleReply(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2"><CornerUpLeft size={10} /> Reply</button>
-                                    {!isMe && <button onClick={() => handleStartPrivateChat(msg.user_id, msg.author_name)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-emerald-50 flex items-center gap-2 border-t"><Mail size={10} /> Private Message</button>}
-                                    {isMe && (<button onClick={() => startEditing(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 border-t"><Edit2 size={10} /> Edit</button>)}
-                                    {isMe && (<button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 border-t"><Trash2 size={10} /> Delete</button>)}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <span className="text-[9px] text-slate-400 mt-1 mx-9">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
+        <div className="fixed inset-0 z-[200] bg-white flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+          
+          {/* --- HEADER BLOCK (iOS Optimized) --- */}
+          <div className="shrink-0 bg-slate-950 pt-[env(safe-area-inset-top)]">
+            <div className="px-2 pt-2 pb-1">
+              <div className="flex bg-white/5 p-1 rounded-xl gap-1">
+                <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                  <Globe size={14} /> Fellowship
+                </button>
+                <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                  <Flame size={14} /> Altar
+                </button>
+                <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                  <Mail size={14} /> DMs
+                  {hasNewDM && currentRoom !== 'private' && (
+                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
 
-            {/* Input area stays locked at bottom */}
-            <div className={`p-4 bg-white border-t relative shrink-0 ${isFullPage ? 'pb-24' : 'pb-safe'}`}>
-              {showMentionList && filteredUsers.length > 0 && (
-                <div className="absolute bottom-20 left-4 bg-white shadow-2xl rounded-2xl border border-slate-200 z-[120] w-64 max-h-48 overflow-y-auto">
-                  {filteredUsers.map(u => (
-                    <button key={u.id} onClick={() => insertMention(u.full_name)} className="w-full text-left px-4 py-3 text-[16px] hover:bg-slate-50 flex items-center gap-2 border-b last:border-0">
-                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">{u.full_name.charAt(0)}</div>
-                      <span className="text-slate-900">{u.full_name}</span>
+            <div className="bg-slate-900 p-4 flex items-center justify-between border-b border-white/5">
+              <div className="flex items-center gap-3">
+                {currentRoom === 'private' && selectedRecipient && (
+                  <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg hover:bg-white/20"><X size={14}/></button>
+                )}
+                <h3 className="text-white font-black italic uppercase text-xs flex items-center gap-2">
+                  {currentRoom === 'private' && selectedRecipient ? (
+                    <span className="flex items-center gap-2 text-emerald-400">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] flex items-center justify-center font-black">{selectedRecipient.full_name.charAt(0)}</div>
+                      {selectedRecipient.full_name}
+                    </span>
+                  ) : (
+                    <>
+                      {currentRoom === 'general' && <><Sparkles size={14} className="text-indigo-400"/> The Upper Room</>}
+                      {currentRoom === 'fasting' && <><Flame size={14} className="text-orange-500"/> Fasting Altar</>}
+                      {currentRoom === 'private' && <><Mail size={14} className="text-emerald-400"/> Sanctuary</>}
+                    </>
+                  )}
+                </h3>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white p-1 active:scale-90 transition-transform"><X size={26} /></button>
+            </div>
+          </div>
+
+          {/* --- CONTENT AREA --- */}
+          <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50">
+            
+            {/* Private User Directory Overlay */}
+            {currentRoom === 'private' && !selectedRecipient && (
+              <div className="absolute inset-0 bg-white z-[110] flex flex-col">
+                <div className="p-4 border-b border-slate-100 bg-slate-50">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                    <input type="text" placeholder="Find a brother..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-[16px] focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
+                  {unreadSenders.length > 0 && !searchTerm && (
+                    <div className="mb-6">
+                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2">New Messages</p>
+                      {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
+                        <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(prev => prev.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm animate-pulse mb-2 text-left">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div>
+                            <div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Tap to read</span></div>
+                          </div>
+                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">The Brethren</p>
+                  {filteredDirectory.filter(u => !unreadSenders.includes(u.id)).map(u => (
+                    <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-50 hover:bg-emerald-50 transition-all group active:scale-[0.98]">
+                      <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 group-hover:bg-emerald-500 group-hover:text-white transition-colors">{u.full_name.charAt(0)}</div><span className="font-bold text-slate-700">{u.full_name}</span></div>
+                      <UserPlus size={18} className="text-slate-300 group-hover:text-emerald-500" />
                     </button>
                   ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {isRecording ? (
-                <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-pulse">
-                   <div className="text-red-600 font-bold text-sm">Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</div>
-                   <div className="flex gap-2">
-                      <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18}/></button>
-                      <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg">Done</button>
-                   </div>
-                </div>
+            {/* Fasting Scripture Banner */}
+            {currentRoom === 'fasting' && fastingPreaching && (
+              <div className="bg-orange-50 p-4 shrink-0 border-b border-orange-100 flex items-start gap-3">
+                <Quote size={18} className="text-orange-300 shrink-0 mt-1" />
+                <p className="text-[13px] text-orange-900 font-serif italic leading-relaxed line-clamp-2">"{fastingPreaching}"</p>
+              </div>
+            )}
+
+            {/* MESSAGES FEED */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 overscroll-contain" onClick={() => setActiveMenuId(null)}>
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50"><MessageCircle size={48} className="mb-2" /><p className="text-sm font-bold uppercase tracking-widest">Room is Quiet</p></div>
               ) : (
-                <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
-                  <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 text-slate-400 h-11"><Smile size={20} /></button>
-                  <textarea 
-                    ref={textareaRef} 
-                    value={newMessage} 
-                    onChange={handleTextChange} 
-                    onKeyDown={handleKeyDown}
-                    placeholder="Speak to the brethren..."
-                    // FIXED: text-slate-900 for black text, text-[16px] to prevent zoom
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[16px] leading-tight focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none max-h-32 text-slate-900 font-medium placeholder:text-slate-400"
-                    rows={1}
-                  />
-                  {newMessage.trim() ? (
-                    <button disabled={isSending} className={`${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} text-white p-3 rounded-xl h-11 transition-all active:scale-95`}>
-                      {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                    </button>
-                  ) : (
-                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-xl h-11 active:scale-95"><Mic size={20} /></button>
-                  )}
-                </form>
-              )}
+                messages.map((msg, index) => {
+                  const isMe = msg.user_id === user.id;
+                  const isEditing = editingId === msg.id;
+                  return (
+                    <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group animate-in fade-in slide-in-from-bottom-1`}>
+                      <div className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black uppercase text-white shrink-0 ${isMe ? 'bg-indigo-500' : 'bg-slate-400'}`}>{msg.author_name?.charAt(0)}</div>
+                        <div className={`relative rounded-2xl text-sm transition-all shadow-sm ${isMe ? 'bg-indigo-600 text-white rounded-br-none pl-8 pr-4 py-3' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none pr-8 pl-4 py-3'}`}>
+                          {!isMe && <p className="text-[9px] font-black text-indigo-500 uppercase mb-1">{msg.author_name}</p>}
+                          
+                          {msg.reply_to && (
+                            <div className={`mb-2 p-2 rounded-lg text-xs border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+                              <p className="font-bold text-[10px] mb-0.5">{msg.reply_to.author_name}</p>
+                              <p className="line-clamp-1 italic opacity-80">{msg.reply_to.type === 'audio' ? '🎵 Voice Note' : msg.reply_to.content}</p>
+                            </div>
+                          )}
 
-              {showEmojiPicker && (
-                <div className="absolute bottom-24 left-4 z-[100] shadow-2xl rounded-2xl border border-slate-200">
-                  <EmojiPicker onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} emojiStyle={EmojiStyle.NATIVE} width={300} height={350} />
-                </div>
+                          {isEditing ? (
+                             <div className="flex flex-col gap-2 min-w-[200px]">
+                                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 bg-white rounded p-2 text-[16px] outline-none ring-2 ring-orange-500" rows={2}/>
+                                <div className="flex justify-end gap-2"><button onClick={() => setEditingId(null)} className="text-xs text-slate-400">Cancel</button><button onClick={() => saveEdit(msg.id)} className="bg-white text-indigo-600 px-2 py-1 rounded text-xs font-bold shadow-sm border"><Check size={12}/> Save</button></div>
+                             </div>
+                          ) : (
+                             msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-8 w-44" /> : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
+                          )}
+
+                          {!isEditing && (
+                            <div className={`absolute top-2 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ${isMe ? 'left-2' : 'right-2'}`}>
+                              <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`p-1 hover:bg-black/10 rounded-full transition-colors ${isMe ? 'text-white/60 hover:text-white' : 'text-slate-300 hover:text-indigo-500'}`}><MoreVertical size={14} /></button>
+                              {activeMenuId === msg.id && (
+                                <div className={`absolute top-6 bg-white shadow-xl rounded-xl border border-slate-100 z-50 w-36 flex flex-col animate-in fade-in zoom-in duration-200 ${isMe ? 'left-0' : 'right-0'}`}>
+                                  <button onClick={() => handleReply(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2"><CornerUpLeft size={10} /> Reply</button>
+                                  {!isMe && <button onClick={() => handleStartPrivateChat(msg.user_id, msg.author_name)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-emerald-50 flex items-center gap-2 border-t"><Mail size={10} /> Private Message</button>}
+                                  {isMe && msg.type === 'text' && (<button onClick={() => startEditing(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 border-t"><Edit2 size={10} /> Edit</button>)}
+                                  {isMe && (<button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 border-t"><Trash2 size={10} /> Delete</button>)}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[9px] text-slate-400 mt-1 mx-9">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+                  );
+                })
               )}
+              <div ref={messagesEndRef} />
             </div>
+          </div>
+
+          {/* --- INPUT BLOCK (Keyboard Safe) --- */}
+          <div className="shrink-0 bg-white border-t p-4 pb-[max(1rem,env(safe-area-inset-bottom))] relative">
+            
+            {showMentionList && filteredUsers.length > 0 && (
+              <div className="absolute bottom-20 left-4 bg-white shadow-2xl rounded-2xl border z-[120] w-64 max-h-48 overflow-y-auto">
+                {filteredUsers.map(u => (
+                  <button key={u.id} onClick={() => insertMention(u.full_name)} className="w-full text-left px-4 py-3 text-[16px] hover:bg-slate-50 flex items-center gap-2 border-b last:border-0">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">{u.full_name.charAt(0)}</div>
+                    <span className="text-slate-900">{u.full_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {replyingTo && (
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-xl px-4 py-2 mb-2 -mt-2 mx-1 border-b-0 animate-in slide-in-from-bottom-2">
+                <div className="text-xs text-slate-500">Replying to <span className="font-bold text-indigo-600">{replyingTo.author_name}</span></div>
+                <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-rose-500"><X size={14}/></button>
+              </div>
+            )}
+
+            {isRecording ? (
+              <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-pulse">
+                 <div className="text-red-600 font-bold text-sm flex items-center gap-2"><div className="w-2 h-2 bg-red-600 rounded-full animate-ping"/>Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</div>
+                 <div className="flex gap-2">
+                    <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={18}/></button>
+                    <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg active:scale-95">Done</button>
+                 </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
+                <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 text-slate-400 h-11 hover:text-indigo-500 transition-colors"><Smile size={22} /></button>
+                <textarea 
+                  ref={textareaRef} 
+                  value={newMessage} 
+                  onChange={handleTextChange} 
+                  placeholder="Speak to the brethren..." 
+                  className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-medium outline-none resize-none max-h-32 placeholder:text-slate-400 leading-tight" 
+                  rows={1} 
+                />
+                {newMessage.trim() ? (
+                  <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white transition-all active:scale-90 h-11 flex items-center justify-center ${currentRoom === 'fasting' ? 'bg-orange-600 shadow-orange-100' : currentRoom === 'private' ? 'bg-emerald-600 shadow-emerald-100' : 'bg-indigo-600 shadow-indigo-100'} shadow-lg`}>
+                    {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                  </button>
+                ) : (
+                  <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-11 shadow-lg shadow-orange-100 active:scale-90 transition-all"><Mic size={22} /></button>
+                )}
+              </form>
+            )}
+
+            {showEmojiPicker && (
+              <div className="absolute bottom-24 left-4 z-[100] shadow-2xl rounded-2xl border border-slate-200 overflow-hidden">
+                <EmojiPicker onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} emojiStyle={EmojiStyle.NATIVE} width={300} height={350} />
+              </div>
+            )}
           </div>
         </div>
       )}
