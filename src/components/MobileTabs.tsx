@@ -7,9 +7,9 @@ import { supabase } from '@/lib/supabase';
 import { 
   Flame, 
   Shield, 
-  Library, 
   MessageSquare, 
-  Cross 
+  Cross,
+  Home // <--- Added missing Home import
 } from 'lucide-react';
 
 export default function MobileTabs() {
@@ -17,9 +17,10 @@ export default function MobileTabs() {
   
   // --- Activity States ---
   const [hasNewChat, setHasNewChat] = useState(false);
+  const [hasNewDM, setHasNewDM] = useState(false); // <--- Added missing state
   const [hasNewPrayer, setHasNewPrayer] = useState(false);
   const [watchmanActive, setWatchmanActive] = useState(false);
-  const [isCommunalFasting, setIsCommunalFasting] = useState(false); // <--- New State
+  const [isCommunalFasting, setIsCommunalFasting] = useState(false);
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -38,8 +39,15 @@ export default function MobileTabs() {
 
     // 2. Realtime Listener for CHAT
     const chatChannel = supabase.channel('tab-chat-activity')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
-        if (pathname !== '/UpperRoom') setHasNewChat(true);
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        if (pathname !== '/UpperRoom') {
+          // If it has a receiver_id, it's a DM, otherwise it's a general chat
+          if (payload.new.receiver_id) {
+            setHasNewDM(true);
+          } else {
+            setHasNewChat(true);
+          }
+        }
       })
       .subscribe();
 
@@ -79,16 +87,19 @@ export default function MobileTabs() {
 
   // Reset indicators when user visits the page
   useEffect(() => {
-    if (pathname === '/UpperRoom') setHasNewChat(false);
+    if (pathname === '/UpperRoom') {
+      setHasNewChat(false);
+      setHasNewDM(false);
+    }
     if (pathname === '/prayers') setHasNewPrayer(false);
   }, [pathname]);
 
   const tabs = [
+    { name: 'Home', href: '/', icon: Home, alert: false },
     { name: 'Prayers', href: '/prayers', icon: Cross, alert: hasNewPrayer },
-    { name: 'Fasting', href: '/fasting', icon: Flame, alert: isCommunalFasting }, // <--- Now uses state
+    { name: 'Fasting', href: '/fasting', icon: Flame, alert: isCommunalFasting },
     { name: 'Watchman', href: '/watchman', icon: Shield, alert: watchmanActive },
-    { name: 'Library', href: '/library', icon: Library, alert: false },
-    { name: 'Chat', href: '/UpperRoom', icon: MessageSquare, alert: hasNewChat },
+    { name: 'Chat', href: '/UpperRoom', icon: MessageSquare, alert: hasNewChat || hasNewDM },
   ];
 
   return (

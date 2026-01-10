@@ -9,7 +9,7 @@ import {
   Menu, X, Bell, Music, Play, Pause, 
   SkipForward, SkipBack, 
   Volume2, Loader2, Signal, ListMusic,
-  Repeat, Repeat1, BookOpen 
+  Repeat, Repeat1, BookOpen, ScrollText 
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -85,14 +85,12 @@ export default function Navbar() {
       if (data && data.length > 0) {
         setPlaylist(data);
         
-        // RESTORE STATE
         const savedIndex = localStorage.getItem('forge_track_index');
         const savedTime = localStorage.getItem('forge_track_time');
         
         const initialIndex = savedIndex ? parseInt(savedIndex) : 0;
         const initialTime = savedTime ? parseFloat(savedTime) : 0;
         
-        // Validate index
         const safeIndex = (initialIndex >= 0 && initialIndex < data.length) ? initialIndex : 0;
 
         setCurrentTrackIndex(safeIndex);
@@ -104,11 +102,9 @@ export default function Navbar() {
           audioRef.current.volume = 0.4;
           audioRef.current.src = data[safeIndex].url;
           
-          // Restore saved timestamp ONCE on load
           audioRef.current.onloadedmetadata = () => {
              if (audioRef.current) {
                setDuration(audioRef.current.duration);
-               
                if (isInitialMount.current) {
                  if (initialTime > 0) audioRef.current.currentTime = initialTime;
                  isInitialMount.current = false;
@@ -116,7 +112,6 @@ export default function Navbar() {
              }
           };
 
-          // EVENTS
           audioRef.current.onended = () => {
             if (!audioRef.current?.loop) {
                 const nextIndex = (indexRef.current + 1) % data.length;
@@ -127,7 +122,6 @@ export default function Navbar() {
           audioRef.current.ontimeupdate = () => {
              if(audioRef.current) {
                setCurrentTime(audioRef.current.currentTime);
-               // Save time constantly
                localStorage.setItem('forge_track_time', audioRef.current.currentTime.toString());
              }
           };
@@ -144,7 +138,6 @@ export default function Navbar() {
     };
   }, []);
 
-  // Sync state to local storage ONLY after restore is done
   useEffect(() => { 
     if (isRestored) {
         indexRef.current = currentTrackIndex; 
@@ -157,16 +150,13 @@ export default function Navbar() {
     setNotifCount(prev => prev + 1);
     setIsAnimating(true);
     
-    // Play the Bell Sound
     if (notificationAudioRef.current) {
-        notificationAudioRef.current.currentTime = 0; // Reset to start
+        notificationAudioRef.current.currentTime = 0; 
         notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
     }
 
     setTimeout(() => setIsAnimating(false), 1000);
   };
-
-  // --- PLAYER ACTIONS ---
 
   const playTrackAtIndex = (index: number, tracks = playlist) => {
     if (!audioRef.current || tracks.length === 0) return;
@@ -182,7 +172,6 @@ export default function Navbar() {
     const track = tracks[safeIndex];
     const url = track.url;
     
-    // Reset time for new songs
     if (audioRef.current.src !== url) {
       audioRef.current.src = url;
       audioRef.current.currentTime = 0; 
@@ -192,8 +181,6 @@ export default function Navbar() {
     audioRef.current.play()
       .then(() => {
         setIsPlaying(true);
-
-        // --- NEW: LOCK SCREEN CONTROLS (Media Session API) ---
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: track.title,
@@ -205,7 +192,6 @@ export default function Navbar() {
             ]
           });
 
-          // Handlers for Lock Screen Buttons
           navigator.mediaSession.setActionHandler('play', () => { 
             audioRef.current?.play(); 
             setIsPlaying(true); 
@@ -214,8 +200,6 @@ export default function Navbar() {
             audioRef.current?.pause(); 
             setIsPlaying(false); 
           });
-          
-          // Next/Prev Logic for Lock Screen
           navigator.mediaSession.setActionHandler('previoustrack', () => {
              playTrackAtIndex(safeIndex - 1, tracks);
           });
@@ -223,7 +207,6 @@ export default function Navbar() {
              playTrackAtIndex(safeIndex + 1, tracks);
           });
         }
-        // -----------------------------------------------------
       })
       .catch(e => console.log("Audio playback error:", e));
   };
@@ -239,12 +222,11 @@ export default function Navbar() {
     }
   };
 
-  // --- TOGGLE REPEAT ---
   const toggleRepeat = () => {
     if (!audioRef.current) return;
     const newMode = !isRepeatOne;
     setIsRepeatOne(newMode);
-    audioRef.current.loop = newMode; // Uses native HTML5 audio loop
+    audioRef.current.loop = newMode; 
   };
 
   const handleNext = () => playTrackAtIndex(currentTrackIndex + 1);
@@ -282,7 +264,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-6 h-16 flex justify-between items-center relative">
+      <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex justify-between items-center relative">
         
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-2">
@@ -291,20 +273,20 @@ export default function Navbar() {
           </div>
         </Link>
         
-{/* DESKTOP NAV */}
-<div className="hidden lg:flex space-x-8 font-medium text-sm ml-8">
-  {navLinks.map((link) => (
-    <Link 
-      key={link.name} 
-      href={link.href} 
-      className={`${pathname === link.href ? 'text-indigo-600 border-b-2 border-indigo-600 pb-1' : 'text-slate-500 hover:text-indigo-600 transition'}`}
-    >
-      {link.name}
-    </Link>
-  ))}
-</div>
+        {/* DESKTOP NAV */}
+        <div className="hidden lg:flex space-x-8 font-medium text-sm ml-8">
+          {navLinks.map((link) => (
+            <Link 
+              key={link.name} 
+              href={link.href} 
+              className={`${pathname === link.href ? 'text-indigo-600 border-b-2 border-indigo-600 pb-1' : 'text-slate-500 hover:text-indigo-600 transition'}`}
+            >
+              {link.name}
+            </Link>
+          ))}
+        </div>
 
-        {/* ACTIONS - Reduced gap on mobile for tighter layout */}
+        {/* ACTIONS */}
         <div className="flex items-center gap-1 md:gap-4">
           
           {/* QUICK BIBLE ACCESS */}
@@ -316,6 +298,17 @@ export default function Navbar() {
             title="Read Bible"
           >
             <BookOpen size={20} />
+          </Link>
+
+        {/* LIBRARY ICON - Visible ONLY on Mobile/Tablet (Hidden on Desktop) */}
+          <Link 
+            href="/library" 
+            className={`lg:hidden p-1.5 md:p-2 rounded-full transition-all flex items-center justify-center
+              ${pathname === '/library' || pathname === '/archives' ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-50 text-slate-400'}
+            `}
+            title="Vault & Library"
+          >
+            <ListMusic size={20} />
           </Link>
 
           {/* MUSIC PLAYER WIDGET */}
@@ -334,11 +327,7 @@ export default function Navbar() {
               {isPlayerOpen && (
                 <div className={`
                   bg-slate-900 rounded-2xl shadow-2xl p-3 border border-slate-800 z-[100] animate-in zoom-in duration-200
-                  
-                  /* MOBILE STYLES */
                   fixed top-24 left-1/2 -translate-x-1/2 w-[85%] max-w-[260px]
-                  
-                  /* DESKTOP STYLES */
                   md:absolute md:top-12 md:right-0 md:left-auto md:translate-x-0 md:w-72
                 `}>
                   
@@ -357,7 +346,6 @@ export default function Navbar() {
                     <button 
                       onClick={() => setShowPlaylistView(!showPlaylistView)}
                       className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5"
-                      title={showPlaylistView ? "Back to Player" : "View Playlist"}
                     >
                       <span className="text-[9px] font-bold uppercase tracking-wider inline-block">
                         {showPlaylistView ? "Player" : "Playlist"}
@@ -419,7 +407,6 @@ export default function Navbar() {
                           <button 
                             onClick={toggleRepeat} 
                             className={`transition-colors p-1 ${isRepeatOne ? 'text-indigo-400' : 'text-slate-500 hover:text-white'}`}
-                            title={isRepeatOne ? "Looping One" : "Loop Playlist"}
                           >
                              {isRepeatOne ? <Repeat1 size={14} /> : <Repeat size={14} />}
                           </button>
@@ -466,24 +453,21 @@ export default function Navbar() {
             {initials}
           </Link>
 
-      {/* MOBILE MENU BTN - Hidden on mobile, only visible on desktop if needed */}
-<button className="hidden md:block p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-  {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-</button>
+          <button className="hidden md:block p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
       </div>
 
-   {/* MOBILE MENU - Now strictly desktop only if triggered */}
-{isMobileMenuOpen && (
-  <div className="hidden lg:flex border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4">
-    {navLinks.map((link) => (
-      <Link key={link.name} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className={`text-sm font-bold py-2 ${pathname === link.href ? 'text-indigo-600' : 'text-slate-600 hover:text-indigo-600'}`}>
-        {link.name}
-      </Link>
-    ))}
-  </div>
-)}
+      {isMobileMenuOpen && (
+        <div className="hidden lg:flex border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4">
+          {navLinks.map((link) => (
+            <Link key={link.name} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className={`text-sm font-bold py-2 ${pathname === link.href ? 'text-indigo-600' : 'text-slate-600 hover:text-indigo-600'}`}>
+              {link.name}
+            </Link>
+          ))}
+        </div>
+      )}
     </nav>
   );
 }
-
