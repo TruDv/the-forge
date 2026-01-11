@@ -130,8 +130,17 @@ export default function WatchmanPage() {
   const fireOpacity = count > 0 ? (0.5 + (Math.min(count, 10) * 0.05)) : 0.2; 
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col relative overflow-hidden text-slate-200 p-4 md:p-8">
+    // FIX: Removed 'min-h-screen' and used 'h-full' to integrate better with layouts
+    // Added 'bg-slate-950' to force background color
+    <div className="w-full h-full bg-slate-950 flex flex-col relative overflow-hidden text-slate-200 p-4 md:p-8">
       
+      {/* GLOBAL BACKGROUND FIX */}
+      <style jsx global>{`
+        body {
+          background-color: #020617; /* matches slate-950 */
+        }
+      `}</style>
+
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950" />
 
       {/* TOP HEADER */}
@@ -199,7 +208,7 @@ export default function WatchmanPage() {
           </div>
           
           <div className="bg-indigo-600/20 px-6 py-2 flex justify-center items-center">
-             <span className="text-[9px] font-black text-indigo-300 uppercase tracking-[0.3em] text-center">Maintaining the 24-hour spiritual frequency</span>
+              <span className="text-[9px] font-black text-indigo-300 uppercase tracking-[0.3em] text-center">Maintaining the 24-hour spiritual frequency</span>
           </div>
         </div>
       </div>
@@ -271,8 +280,8 @@ export default function WatchmanPage() {
                     className={`p-4 rounded-2xl border transition-all ${currentWatch.number === w.n ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5 opacity-60'}`}
                   >
                     <div className="flex justify-between items-start mb-1">
-                       <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Watch {w.n}</span>
-                       <span className="text-[10px] font-bold text-slate-400">{w.t}</span>
+                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Watch {w.n}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{w.t}</span>
                     </div>
                     <h4 className="font-bold text-white text-sm uppercase tracking-tight">{w.title}</h4>
                     <p className="text-xs text-slate-400 mt-1 italic leading-snug">{w.desc}</p>
