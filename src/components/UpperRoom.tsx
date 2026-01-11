@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation'; // Added for redirect
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
@@ -13,7 +13,7 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
 
   // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
@@ -52,18 +52,22 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // --- VIEWPORT STABILITY ---
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState('100%');
 
-  // Handle Closing & Redirecting
+  useEffect(() => {
+    // Detect platform once on mount
+    const ua = navigator.userAgent.toLowerCase();
+    setIsAndroid(ua.includes("android"));
+  }, []);
+
   const handleClose = () => {
     setIsOpen(false);
-    // If on mobile (screen < 768px), redirect to home
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       router.push('/');
     }
   };
 
-  // Logic to clear the red pulse when entering the DM tab
   useEffect(() => {
     if (currentRoom === 'private') {
       setHasNewDM(false);
@@ -72,23 +76,37 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   useEffect(() => {
     if (!isOpen) return;
+
     const handleVisualViewportResize = () => {
-      if (window.visualViewport) {
+      if (window.visualViewport && isAndroid) {
+        // Only apply this logic for Android
         const height = window.visualViewport.height;
-        const isKeyboard = height < window.innerHeight * 0.85;
-        setIsKeyboardOpen(isKeyboard);
-        if (isKeyboard) window.scrollTo(0, 0);
+        setViewportHeight(`${height}px`);
+        
+        // Ensure scroll stays at bottom when keyboard pops
+        if (height < window.innerHeight * 0.8) {
+           setTimeout(() => {
+             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+           }, 100);
+        }
       }
     };
-    window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
+
+    if (isAndroid) {
+      window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
+      window.visualViewport?.addEventListener('scroll', handleVisualViewportResize);
+      handleVisualViewportResize();
+    }
+    
     document.body.style.overflow = 'hidden';
+
     return () => {
       window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
+      window.visualViewport?.removeEventListener('scroll', handleVisualViewportResize);
       document.body.style.overflow = '';
     };
-  }, [isOpen]);
+  }, [isOpen, isAndroid]);
 
-  // Initial Sound Setup
   useEffect(() => {
     sendAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
     receiveAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
@@ -99,7 +117,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // --- DATA FETCHING & REALTIME ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -178,7 +195,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
-  // --- HELPER: Get Active DM Conversations ---
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -200,7 +216,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
-  // --- ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -258,7 +273,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
-  // --- UNIVERSAL AUDIO HELPERS ---
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -337,9 +351,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   return (
     <>
-      {/* Modified to 'hidden md:flex'. 
-        The icon will now only appear on Desktop (medium screens and up) 
-      */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)} 
@@ -358,12 +369,19 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
-          <div className={`
-            fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
-            left-0 right-0 top-[60px] ${isKeyboardOpen ? 'bottom-0' : 'bottom-[80px]'}
-            md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
-            overflow-hidden
-          `}>
+          <div 
+            style={{ 
+              height: isAndroid ? viewportHeight : 'calc(100% - 60px)', 
+              top: '60px',
+              bottom: isAndroid ? 'auto' : '0' 
+            }}
+            className={`
+              fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
+              left-0 right-0
+              md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
+              overflow-hidden
+            `}
+          >
             
             {/* 1. TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
@@ -484,7 +502,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             </div>
 
             {/* 4. INPUT AREA */}
-            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
+            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30 pb-safe">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
                   {filteredUsers.map(u => (
@@ -519,7 +537,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
-                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} shadow-xl`}>
@@ -547,27 +564,24 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
 
-        /* Idle State Pulse */
+        /* iPhone Safe Area handling */
+        .pb-safe {
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+
         @keyframes pulse-slow {
           0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
           50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
         }
-        .animate-pulse-slow {
-          animation: pulse-slow 3s infinite ease-in-out;
-        }
+        .animate-pulse-slow { animation: pulse-slow 3s infinite ease-in-out; }
 
-        /* Urgent Alert Pulse */
         @keyframes pulse-fast {
           0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
           50% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(220, 38, 38, 0); }
         }
-        .animate-pulse-fast {
-          animation: pulse-fast 1.5s infinite ease-in-out;
-        }
+        .animate-pulse-fast { animation: pulse-fast 1.5s infinite ease-in-out; }
 
-        audio::-webkit-media-controls-enclosure {
-            background-color: transparent !important;
-        }
+        audio::-webkit-media-controls-enclosure { background-color: transparent !important; }
       `}} />
     </>
   );
