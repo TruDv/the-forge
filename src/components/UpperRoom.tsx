@@ -47,21 +47,32 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null); 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
 
-  // --- iOS VIEWPORT STABILITY FIX ---
-  const [viewportHeight, setViewportHeight] = useState('100dvh');
+  // --- RESPONSIVE VIEWPORT LOGIC ---
+  const [viewportHeight, setViewportHeight] = useState('100%');
+  const [isMobile, setIsMobile] = useState(false);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
+  // Detect Mobile vs Desktop
   useEffect(() => {
-    if (!isOpen) return;
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Mobile-Only Viewport Resizing (Keyboard Fix)
+  useEffect(() => {
+    if (!isOpen || !isMobile) return;
 
     const handleVisualViewportResize = () => {
       if (window.visualViewport) {
         const height = window.visualViewport.height;
         setViewportHeight(`${height}px`);
         
-        // Detect if keyboard is likely open (screen shrinks significantly)
+        // Mobile Keyboard Detection
         const isKeyboard = height < window.screen.height * 0.75;
         setIsKeyboardOpen(isKeyboard);
         
@@ -75,7 +86,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       handleVisualViewportResize();
     }
 
-    // Scroll lock to prevent the main page from moving
+    // Lock body scroll on mobile only
     document.body.style.overflow = 'hidden';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
@@ -89,7 +100,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       document.body.style.position = '';
       document.body.style.width = '';
     };
-  }, [isOpen]);
+  }, [isOpen, isMobile]);
 
   // Initial Sound Setup
   useEffect(() => {
@@ -104,7 +115,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // --- DATA FETCHING & REALTIME ---
+  // --- DATA FETCHING ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -230,7 +241,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       receiver_id: currentRoom === 'private' ? selectedRecipient.id : null
     }]);
 
-    if (!error) { playSound('send'); }
+    if (!error) playSound('send');
     setIsSending(false);
   };
 
@@ -270,6 +281,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setNewMessage(words.join(''));
     setShowMentionList(false);
     if (textareaRef.current) textareaRef.current.focus();
+  };
+
+  const handleInputFocus = () => {
+    if (isMobile) {
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 300);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -343,10 +364,25 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
           {/* Backdrop */}
           {!isFullPage && <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40" onClick={() => setIsOpen(false)} />}
 
-          {/* SANDWICH LAYOUT FIX */}
-          <div className={`fixed left-0 right-0 top-[60px] bottom-[80px] z-50 bg-white flex flex-col shadow-2xl ${isFullPage ? 'h-full w-full inset-0 rounded-none' : 'mx-4 rounded-2xl border border-slate-200 overflow-hidden'}`}>
+          {/* LAYOUT CONFIGURATION:
+             1. Mobile: "Sandwiched" full width, restricted top and bottom.
+             2. Desktop (md:): Fixed Side Panel, pinned between header and footer.
+          */}
+          <div 
+            className={`
+              fixed z-50 bg-white flex flex-col shadow-2xl overflow-hidden
+              /* MOBILE BASE STYLES */
+              left-0 right-0 top-[60px] bottom-[80px]
+              
+              /* DESKTOP STYLES - SIDE SANDWICH */
+              md:left-auto md:right-6 md:w-[400px] md:top-[80px] md:bottom-[100px] md:h-auto md:rounded-2xl md:border md:border-slate-200
+              
+              ${isFullPage ? '!inset-0 !rounded-none !w-full !h-full !top-0 !bottom-0' : ''}
+            `}
+            style={isMobile && !isFullPage ? { height: viewportHeight, bottom: 'auto' } : {}}
+          >
             
-            {/* 1. HEADER (Pinned Top) */}
+            {/* 1. HEADER */}
             <div className="shrink-0 bg-slate-950 px-2 pt-2 pb-1">
                <div className="flex bg-white/5 p-1 rounded-xl gap-1">
                   <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
@@ -386,7 +422,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={26}/></button>}
             </div>
 
-            {/* 3. MESSAGE AREA (Flex Grow) */}
+            {/* 3. MESSAGE AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50 overflow-hidden">
               
               {currentRoom === 'private' && !selectedRecipient && (
@@ -402,7 +438,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                       <div className="mb-4">
                         <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">New Messages</p>
                         {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
-                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(prev => prev.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
+                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(p => p.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
                             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div><div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Tap to read</span></div></div>
                             <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
                           </button>
@@ -471,7 +507,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
             {/* 4. INPUT AREA (LIFTED & HIGH Z-INDEX) */}
             <div 
-              className={`shrink-0 p-4 bg-white border-t border-slate-100 relative z-[999] ${!isKeyboardOpen ? 'mb-26' : 'mb-0'} transition-all duration-200`} 
+              ref={inputRef}
+              className={`shrink-0 p-4 bg-white border-t border-slate-100 relative z-[999] transition-all duration-200 ${isMobile && !isKeyboardOpen ? 'mb-26' : 'mb-0'}`} 
               style={{ boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.05)' }}
             >
               {showMentionList && filteredUsers.length > 0 && (
@@ -489,7 +526,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               {replyingTo && (
                 <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-xl px-4 py-2 mb-2 animate-in slide-in-from-bottom-2">
                   <div className="text-xs text-slate-500">Replying to <span className="font-bold text-indigo-600">{replyingTo.author_name}</span></div>
-                  <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-rose-500"><X size={14}/></button>
+                  <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-rose-500 transition-colors"><X size={14}/></button>
                 </div>
               )}
 
@@ -511,6 +548,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     ref={textareaRef} 
                     value={newMessage} 
                     onChange={handleTextChange} 
+                    onFocus={handleInputFocus}
                     onKeyDown={handleKeyDown}
                     placeholder="Speak to the brethren..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32 placeholder:text-slate-400 leading-tight"
