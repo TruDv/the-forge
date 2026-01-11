@@ -45,6 +45,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null); // Ref for the input container
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null); 
@@ -61,10 +62,11 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         const height = window.visualViewport.height;
         setViewportHeight(`${height}px`);
         
-        // Detect if keyboard is open (screen shrinks significantly)
-        const isKeyboard = height < window.screen.height * 0.75;
+        // If the viewport is significantly smaller than the screen, keyboard is open
+        const isKeyboard = height < window.screen.height * 0.8;
         setIsKeyboardOpen(isKeyboard);
         
+        // Force scroll to top to prevent "floating" background
         window.scrollTo(0, 0);
       }
     };
@@ -103,7 +105,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // --- DATA FETCHING ---
+  // --- DATA FETCHING & REALTIME ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -229,7 +231,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       receiver_id: currentRoom === 'private' ? selectedRecipient.id : null
     }]);
 
-    if (!error) playSound('send');
+    if (!error) { playSound('send'); }
     setIsSending(false);
   };
 
@@ -269,6 +271,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setNewMessage(words.join(''));
     setShowMentionList(false);
     if (textareaRef.current) textareaRef.current.focus();
+  };
+
+  // --- NEW: SCROLL INPUT INTO VIEW ON FOCUS ---
+  const handleInputFocus = () => {
+    // Small delay to allow keyboard to pop up and viewport to resize
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 300);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -338,15 +350,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       )}
 
       {isOpen && (
-        <>
-          {/* Backdrop */}
-          {!isFullPage && <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40" onClick={() => setIsOpen(false)} />}
+        <div 
+          className={isFullPage ? "flex flex-col bg-white" : "fixed inset-0 z-[100] bg-white flex flex-col overflow-hidden"}
+          style={{ height: isFullPage ? '100%' : viewportHeight }} 
+        >
+          {!isFullPage && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsOpen(false)} />}
 
-          {/* SANDWICH LAYOUT FIX */}
-          <div className={`fixed left-0 right-0 top-[64px] bottom-[80px] z-50 bg-white flex flex-col shadow-2xl ${isFullPage ? 'h-full w-full inset-0 rounded-none' : 'mx-4 rounded-2xl border border-slate-200 overflow-hidden'}`}>
+          <div className={`relative bg-white flex flex-col transition-all h-full w-full ${!isFullPage && 'max-w-md shadow-2xl mx-auto'}`}>
             
-            {/* 1. HEADER (Pinned Top) */}
-            <div className="shrink-0 bg-slate-950 px-2 pt-2 pb-1">
+            {/* 1. ROOM TABS (Fixed at Top) */}
+            <div className="shrink-0 bg-slate-950 px-2 pt-[env(safe-area-inset-top,8px)] z-50">
                <div className="flex bg-white/5 p-1 rounded-xl gap-1">
                   <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
                     <Globe size={14} /> Fellowship
@@ -366,7 +379,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                </div>
             </div>
 
-            <div className="bg-slate-900 p-4 flex items-center justify-between shrink-0 border-b border-white/5">
+            {/* 2. SUB HEADER */}
+            <div className="bg-slate-900 p-4 flex items-center justify-between shrink-0 z-50 border-b border-white/5">
               <div className="flex items-center gap-3">
                 {currentRoom === 'private' && selectedRecipient && (
                   <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg hover:bg-white/20"><X size={14}/></button>
@@ -382,12 +396,11 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   )}
                 </h3>
               </div>
-              {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={26}/></button>}
+              {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white active:scale-90 transition-transform"><X size={26}/></button>}
             </div>
 
-            {/* 3. MESSAGE AREA (Flex Grow) */}
+            {/* 3. MESSAGE AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50 overflow-hidden">
-              
               {currentRoom === 'private' && !selectedRecipient && (
                 <div className="absolute inset-0 bg-white z-[60] flex flex-col">
                   <div className="p-4 border-b border-slate-100 bg-slate-50">
@@ -401,15 +414,15 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                       <div className="mb-4">
                         <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">New Messages</p>
                         {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
-                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(prev => prev.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
+                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(p => p.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
                             <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div><div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Tap to read</span></div></div>
                             <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
                           </button>
                         ))}
                       </div>
                     )}
-                    {filteredDirectory.filter(u => !unreadSenders.includes(u.id)).map(u => (
-                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all group active:bg-slate-100">
+                    {filteredDirectory.map(u => (
+                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 active:bg-slate-100 transition-colors">
                         <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-500">{u.full_name.charAt(0)}</div><span className="font-bold text-slate-700">{u.full_name}</span></div>
                         <UserPlus size={18} className="text-slate-300 group-hover:text-emerald-500" />
                       </button>
@@ -466,8 +479,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
             {/* 4. INPUT AREA (LIFTED & HIGH Z-INDEX) */}
             <div 
-              className={`shrink-0 p-4 bg-white border-t border-slate-100 relative z-[999] ${!isKeyboardOpen ? 'mb-26' : 'mb-0'} transition-all duration-200`} 
-              style={{ boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.05)' }}
+              ref={inputRef}
+              className={`shrink-0 p-4 bg-white border-t border-slate-100 relative z-[999] transition-all duration-200`} 
+              style={{ 
+                boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.05)',
+                // DYNAMIC PADDING: 80px (clear tabs) if keyboard closed, 0 if open
+                paddingBottom: !isKeyboardOpen ? '104px' : 'max(1rem, env(safe-area-inset-bottom))'
+              }}
             >
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border z-[120] w-64 max-h-48 overflow-y-auto">
@@ -506,6 +524,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     ref={textareaRef} 
                     value={newMessage} 
                     onChange={handleTextChange} 
+                    onFocus={handleInputFocus} // TRIGGER VIEWPORT ADJUSTMENT
                     onKeyDown={handleKeyDown}
                     placeholder="Speak to the brethren..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32 placeholder:text-slate-400 leading-tight"
@@ -528,7 +547,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Manual CSS for Scrollbar */}
