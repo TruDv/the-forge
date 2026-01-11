@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
-  Mic, Trash2, Play, MoreVertical, Edit2, Check,
+  Mic, Square, Trash2, Play, Pause, MoreVertical, Edit2, Check,
   CornerUpLeft, Flame, Mail, Globe, Quote, Search, UserPlus
 } from 'lucide-react';
 import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
@@ -12,6 +12,7 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
+  // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(isFullPage || false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -19,89 +20,90 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
+  
+  // --- ROOM & DM STATE ---
   const [currentRoom, setCurrentRoom] = useState<RoomType>('general');
   const [fastingPreaching, setFastingPreaching] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [hasNewDM, setHasNewDM] = useState(false);
+
+  // --- UI INTERACTION STATE ---
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // --- AUDIO STATE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); 
 
-  // ── Improved open/close + blank screen fix ──────────────────────────────
+  // --- iOS VIEWPORT STABILITY FIX ---
+  const [viewportHeight, setViewportHeight] = useState('100dvh');
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.inset = '0';
-      document.body.style.width = '100%';
-      document.body.style.height = '100%';
-    } else {
-      // Aggressive cleanup + reflow to prevent white/black flash
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.inset = '';
-      document.body.style.width = '';
-      document.body.style.height = '';
+    if (!isOpen) return;
 
-      // Force browser to repaint
-      setTimeout(() => {
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        const height = window.visualViewport.height;
+        setViewportHeight(`${height}px`);
+        
+        // Detect if keyboard is open (screen shrinks significantly)
+        const isKeyboard = height < window.screen.height * 0.75;
+        setIsKeyboardOpen(isKeyboard);
+        
         window.scrollTo(0, 0);
-        document.documentElement.style.display = 'none';
-        document.documentElement.offsetHeight; // reflow
-        document.documentElement.style.display = '';
-      }, 0);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
+      window.visualViewport.addEventListener('scroll', handleVisualViewportResize);
+      handleVisualViewportResize();
     }
 
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+
     return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleVisualViewportResize);
+      }
       document.body.style.overflow = '';
       document.body.style.position = '';
-      document.body.style.inset = '';
       document.body.style.width = '';
-      document.body.style.height = '';
     };
   }, [isOpen]);
 
-  // ── Scroll to bottom on new messages or when keyboard appears ────────────
+  // Initial Sound Setup
   useEffect(() => {
-    if (!messagesEndRef.current) return;
+    const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
+    const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
+    sendAudioRef.current = new Audio(backupSent);
+    receiveAudioRef.current = new Audio(backupRec);
+  }, []);
 
-    const scrollToBottom = () => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+  const playSound = (type: 'send' | 'receive') => {
+    const audio = type === 'send' ? sendAudioRef.current : receiveAudioRef.current;
+    if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
+  };
 
-    scrollToBottom();
-
-    // Listen for visual viewport changes (keyboard show/hide)
-    const handleViewportChange = () => {
-      scrollToBottom();
-    };
-
-    window.visualViewport?.addEventListener('resize', handleViewportChange);
-    window.visualViewport?.addEventListener('scroll', handleViewportChange);
-
-    return () => {
-      window.visualViewport?.removeEventListener('resize', handleViewportChange);
-      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
-    };
-  }, [messages, isOpen, editingId, replyingTo]);
-
-  // Rest of your data fetching + realtime logic (unchanged)
+  // --- DATA FETCHING ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -162,9 +164,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   const { data: newMsg } = await supabase.from('messages').select('*, reply_to:reply_to_id(content, author_name, type)').eq('id', payload.new.id).single();
                   if (newMsg) {
                     setMessages((current) => [...current, newMsg]);
-                    if (newMsg.user_id !== user.id) {
-                      receiveAudioRef.current?.play().catch(() => {});
-                    }
+                    if (newMsg.user_id !== user.id) playSound('receive');
                   }
                 }
             }
@@ -186,7 +186,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         if (isPrivate && isForMe && notLookingAtThisChat) {
           setHasNewDM(true);
           setUnreadSenders(prev => [...new Set([...prev, payload.new.user_id])]);
-          receiveAudioRef.current?.play().catch(() => {});
+          playSound('receive');
         }
       }).subscribe();
 
@@ -197,9 +197,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   }, [isOpen, user.id, currentRoom, selectedRecipient]);
 
   useEffect(() => {
-    if (currentRoom === 'private' && unreadSenders.length === 0) setHasNewDM(false);
+    if (currentRoom === 'private' && unreadSenders.length === 0) {
+      setHasNewDM(false);
+    }
   }, [currentRoom, unreadSenders]);
 
+  useEffect(() => {
+    if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isOpen, editingId, replyingTo]);
+
+  // --- ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user) return;
@@ -222,7 +229,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       receiver_id: currentRoom === 'private' ? selectedRecipient.id : null
     }]);
 
-    if (!error) sendAudioRef.current?.play().catch(() => {});
+    if (!error) playSound('send');
     setIsSending(false);
   };
 
@@ -253,7 +260,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     e.target.style.height = `${e.target.scrollHeight}px`;
     const lastWord = val.split(/[\s\n]+/).pop(); 
     if (lastWord && lastWord.startsWith('@')) { setMentionQuery(lastWord.slice(1)); setShowMentionList(true); } 
-    else setShowMentionList(false);
+    else { setShowMentionList(false); }
   };
 
   const insertMention = (name: string) => {
@@ -261,6 +268,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     words[words.length - 1] = `@${name} `; 
     setNewMessage(words.join(''));
     setShowMentionList(false);
+    if (textareaRef.current) textareaRef.current.focus();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -270,6 +278,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   };
 
+  // --- AUDIO LOGIC ---
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -280,7 +289,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
-      timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+      timerRef.current = setInterval(() => { setRecordingTime((prev) => prev + 1); }, 1000);
     } catch (err) { alert("Mic access denied."); }
   };
 
@@ -300,13 +309,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
           room_category: currentRoom, 
           receiver_id: currentRoom === 'private' ? selectedRecipient?.id : null 
         }]);
-        sendAudioRef.current?.play().catch(() => {});
+        playSound('send');
       };
     }
   };
 
   const cancelRecording = () => {
-    if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current) { mediaRecorderRef.current.stop(); mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop()); }
     setIsRecording(false); setRecordingTime(0); if (timerRef.current) clearInterval(timerRef.current);
   };
 
@@ -318,176 +327,131 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
   const filteredDirectory = allUsers.filter(u => u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  // --- RENDER ---
   return (
     <>
       {!isOpen && !isFullPage && (
-        <button onClick={() => setIsOpen(true)} className="fixed bottom-20 right-6 z-[40] bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110 active:scale-95">
+        <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-6 z-40 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110 active:scale-95">
           <MessageCircle size={28} fill="currentColor" />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-          </span>
+          <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
         </button>
       )}
 
       {isOpen && (
-        <div 
-          ref={containerRef}
-          className={`
-            fixed inset-0 z-[100] flex flex-col bg-white
-            ${!isFullPage ? 'max-w-md mx-auto shadow-2xl' : 'w-full'}
-          `}
-        >
-          {/* Smaller & cleaner close button */}
-          <button
-            onClick={() => setIsOpen(false)}
-            className="
-              absolute top-3 right-3 z-[110]
-              bg-white/80 backdrop-blur-sm text-gray-700
-              p-2 rounded-full shadow-md
-              hover:bg-white hover:text-gray-900 hover:scale-105
-              transition-all duration-200
-            "
-            aria-label="Close chat"
-          >
-            <X size={20} />
-          </button>
+        <>
+          {/* Backdrop */}
+          {!isFullPage && <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40" onClick={() => setIsOpen(false)} />}
 
-          {/* Room Tabs */}
-          <div className="shrink-0 bg-slate-950 px-2 pt-[env(safe-area-inset-top,8px)] z-50">
-            <div className="flex bg-white/5 p-1 rounded-xl gap-1">
-              <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                <Globe size={14} /> Fellowship
-              </button>
-              <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                <Flame size={14} /> Altar
-              </button>
-              <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                <Mail size={14} /> DMs
-                {hasNewDM && currentRoom !== 'private' && (
-                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                  </span>
-                )}
-              </button>
+          {/* SANDWICH LAYOUT FIX */}
+          <div className={`fixed left-0 right-0 top-[64px] bottom-[80px] z-50 bg-white flex flex-col shadow-2xl ${isFullPage ? 'h-full w-full inset-0 rounded-none' : 'mx-4 rounded-2xl border border-slate-200 overflow-hidden'}`}>
+            
+            {/* 1. HEADER (Pinned Top) */}
+            <div className="shrink-0 bg-slate-950 px-2 pt-2 pb-1">
+               <div className="flex bg-white/5 p-1 rounded-xl gap-1">
+                  <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                    <Globe size={14} /> Fellowship
+                  </button>
+                  <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                    <Flame size={14} /> Altar
+                  </button>
+                  <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                    <Mail size={14} /> DMs
+                    {hasNewDM && currentRoom !== 'private' && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      </span>
+                    )}
+                  </button>
+               </div>
             </div>
-          </div>
 
-          {/* Sub Header */}
-          <div className="shrink-0 bg-slate-900 p-4 flex items-center justify-between border-b border-white/5 z-50">
-            <div className="flex items-center gap-3">
-              {currentRoom === 'private' && selectedRecipient && (
-                <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg"><X size={14}/></button>
-              )}
-              <h3 className="text-white font-black italic uppercase text-xs flex items-center gap-2">
-                {currentRoom === 'private' && selectedRecipient ? (
-                  <span className="flex items-center gap-2 text-emerald-400">
-                    <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] flex items-center justify-center font-black">{selectedRecipient.full_name.charAt(0)}</div>
-                    {selectedRecipient.full_name}
-                  </span>
-                ) : (
-                  <>{currentRoom === 'general' ? <Sparkles size={14} className="text-indigo-400"/> : <Flame size={14} className="text-orange-500"/>} {currentRoom === 'general' ? 'The Upper Room' : currentRoom === 'fasting' ? 'Fasting Altar' : 'Sanctuary'}</>
+            <div className="bg-slate-900 p-4 flex items-center justify-between shrink-0 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                {currentRoom === 'private' && selectedRecipient && (
+                  <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg hover:bg-white/20"><X size={14}/></button>
                 )}
-              </h3>
+                <h3 className="text-white font-black italic uppercase text-xs truncate">
+                   {currentRoom === 'private' && selectedRecipient ? (
+                    <span className="flex items-center gap-2 text-emerald-400">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] flex items-center justify-center font-black">{selectedRecipient.full_name.charAt(0)}</div>
+                      {selectedRecipient.full_name}
+                    </span>
+                  ) : (
+                    <>{currentRoom === 'general' ? 'The Upper Room' : currentRoom === 'fasting' ? 'Fasting Altar' : 'Private Sanctuary'}</>
+                  )}
+                </h3>
+              </div>
+              {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white"><X size={26}/></button>}
             </div>
-          </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto bg-slate-50">
-            {currentRoom === 'private' && !selectedRecipient && (
-              <div className="flex flex-col h-full">
-                <div className="p-4 border-b border-slate-100 bg-slate-50">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
-                    <input type="text" placeholder="Find a brother..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-[16px] focus:ring-2 focus:ring-emerald-500 outline-none text-slate-900 font-semibold" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+            {/* 3. MESSAGE AREA (Flex Grow) */}
+            <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50 overflow-hidden">
+              
+              {currentRoom === 'private' && !selectedRecipient && (
+                <div className="absolute inset-0 bg-white z-[60] flex flex-col">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                      <input type="text" placeholder="Find a brother..." className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-[16px] outline-none text-slate-900 font-bold" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                    {unreadSenders.length > 0 && !searchTerm && (
+                      <div className="mb-4">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">New Messages</p>
+                        {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
+                          <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(prev => prev.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
+                            <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div><div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Tap to read</span></div></div>
+                            <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredDirectory.filter(u => !unreadSenders.includes(u.id)).map(u => (
+                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all group active:bg-slate-100">
+                        <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-500">{u.full_name.charAt(0)}</div><span className="font-bold text-slate-700">{u.full_name}</span></div>
+                        <UserPlus size={18} className="text-slate-300 group-hover:text-emerald-500" />
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                  {unreadSenders.length > 0 && !searchTerm && (
-                    <div className="mb-4">
-                      <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">New Messages</p>
-                      {allUsers.filter(u => unreadSenders.includes(u.id)).map(u => (
-                        <button key={u.id} onClick={() => { setSelectedRecipient(u); setUnreadSenders(p => p.filter(id => id !== u.id)); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-emerald-50 border border-emerald-200 mb-2 text-left animate-pulse">
-                          <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">{u.full_name.charAt(0)}</div><div><span className="font-bold text-emerald-900 block text-sm">{u.full_name}</span><span className="text-[10px] text-emerald-600 font-bold uppercase">Tap to read</span></div></div>
-                          <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-2">The Brethren</p>
-                  {filteredDirectory.filter(u => !unreadSenders.includes(u.id)).map(u => (
-                    <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:bg-emerald-50 transition-all group active:bg-slate-100">
-                      <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 group-hover:bg-emerald-500 group-hover:text-white transition-colors">{u.full_name.charAt(0)}</div><span className="font-bold text-slate-700">{u.full_name}</span></div>
-                      <UserPlus size={18} className="text-slate-300 group-hover:text-emerald-500" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+              )}
 
-            {currentRoom === 'fasting' && fastingPreaching && (
-              <div className="bg-orange-50 border-b border-orange-100 p-4 shrink-0 relative overflow-hidden group">
-                <Quote className="absolute top-2 right-2 opacity-5 text-orange-900" size={40} />
-                <span className="bg-orange-200 text-orange-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase mb-1 inline-block tracking-widest">Today's Charge</span>
-                <p className="text-xs text-orange-900 font-serif italic leading-relaxed line-clamp-2">"{fastingPreaching}"</p>
-              </div>
-            )}
-
-            <div className="p-4 space-y-4" onClick={() => setActiveMenuId(null)}>
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">
-                  <MessageCircle size={48} className="mb-2" />
-                  <p className="text-sm font-bold uppercase tracking-widest">Room is Quiet</p>
+              {currentRoom === 'fasting' && fastingPreaching && (
+                <div className="bg-orange-50 p-4 shrink-0 border-b border-orange-100 flex items-start gap-3">
+                  <Quote size={20} className="text-orange-200 shrink-0" />
+                  <p className="text-[13px] text-orange-900 font-serif italic leading-snug">{fastingPreaching}</p>
                 </div>
-              ) : (
-                messages.map((msg, index) => {
+              )}
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 overscroll-contain custom-scrollbar" onClick={() => setActiveMenuId(null)}>
+                {messages.map((msg, index) => {
                   const isMe = msg.user_id === user.id;
                   const isEditing = editingId === msg.id;
                   return (
                     <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group animate-in fade-in slide-in-from-bottom-1`}>
                       <div className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black uppercase text-white shrink-0 ${isMe ? 'bg-indigo-500' : 'bg-slate-400'}`}>{msg.author_name?.charAt(0)}</div>
-                        <div className={`relative rounded-2xl text-sm shadow-sm transition-all ${isMe ? 'bg-indigo-600 text-white rounded-br-none pl-8 pr-4 py-3' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none pr-8 pl-4 py-3'}`}>
+                        <div className={`relative rounded-2xl text-sm shadow-sm p-3 ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'}`}>
                           {!isMe && <p className="text-[9px] font-black text-indigo-500 uppercase mb-1">{msg.author_name}</p>}
-                          
                           {msg.reply_to && (
                             <div className={`mb-2 p-2 rounded-lg text-xs border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
                               <p className="font-bold text-[10px] mb-0.5">{msg.reply_to.author_name}</p>
                               <p className="line-clamp-1 italic opacity-80">{msg.reply_to.type === 'audio' ? '🎵 Voice Note' : msg.reply_to.content}</p>
                             </div>
                           )}
-
                           {isEditing ? (
-                            <div className="flex flex-col gap-2 min-w-[200px]">
-                              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 font-bold bg-white rounded p-2 text-[16px] outline-none ring-2 ring-orange-500" rows={2}/>
-                              <div className="flex justify-end gap-2">
-                                <button onClick={() => setEditingId(null)} className="text-xs text-slate-400">Cancel</button>
-                                <button onClick={() => saveEdit(msg.id)} className="bg-white text-indigo-600 px-2 py-1 rounded text-xs font-bold border shadow-sm"><Check size={12}/> Save</button>
-                              </div>
-                            </div>
+                             <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 font-bold bg-white rounded p-2 text-[16px] outline-none" rows={2}/>
                           ) : (
-                            msg.type === 'audio' ? (
-                              <div className="flex items-center gap-2 min-w-[150px] py-1">
-                                <div className={`p-2 rounded-full ${isMe ? 'bg-indigo-500' : 'bg-slate-100'}`}><Play size={14} fill="currentColor" /></div>
-                                <audio controls src={msg.media_url} className="h-8 w-44" />
-                              </div>
-                            ) : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
+                             msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-8 w-44" /> : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
                           )}
-
-                          {!isEditing && (
-                            <div className={`absolute top-2 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity ${isMe ? 'left-2' : 'right-2'}`}>
-                              <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`p-1 hover:bg-black/20 rounded-full transition-colors ${isMe ? 'text-white/60 hover:text-white' : 'text-slate-300 hover:text-indigo-500'}`}><MoreVertical size={14} /></button>
-                              {activeMenuId === msg.id && (
-                                <div className={`absolute top-6 bg-white shadow-xl rounded-xl border border-slate-100 z-50 w-36 flex flex-col animate-in fade-in zoom-in duration-200 ${isMe ? 'left-0' : 'right-0'}`}>
-                                  <button onClick={() => handleReply(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2"><CornerUpLeft size={10} /> Reply</button>
-                                  {!isMe && (
-                                    <button onClick={() => handleStartPrivateChat(msg.user_id, msg.author_name)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-emerald-50 flex items-center gap-2 border-t border-slate-50"><Mail size={10} /> Message Privately</button>
-                                  )}
-                                  {isMe && msg.type === 'text' && (<button onClick={() => startEditing(msg)} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 border-t border-slate-50"><Edit2 size={10} /> Edit</button>)}
-                                  {isMe && (<button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 border-t border-slate-50"><Trash2 size={10} /> Delete</button>)}
-                                </div>
-                              )}
+                          <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}><MoreVertical size={14} /></button>
+                          {activeMenuId === msg.id && (
+                            <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border w-36 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
+                              <button onClick={() => {setReplyingTo(msg); setActiveMenuId(null);}} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 border-b border-slate-50"><CornerUpLeft size={10} /> Reply</button>
+                              {isMe && <button onClick={() => { setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null); }} className="text-left px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2 border-b border-slate-50"><Edit2 size={10} /> Edit</button>}
+                              {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"><Trash2 size={10} /> Delete</button>}
                             </div>
                           )}
                         </div>
@@ -495,73 +459,84 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                       <span className="text-[9px] text-slate-400 mt-1 mx-9">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                   );
-                })
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            {/* 4. INPUT AREA (LIFTED & HIGH Z-INDEX) */}
+            <div 
+              className={`shrink-0 p-4 bg-white border-t border-slate-100 relative z-[999] ${!isKeyboardOpen ? 'mb-26' : 'mb-0'} transition-all duration-200`} 
+              style={{ boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.05)' }}
+            >
+              {showMentionList && filteredUsers.length > 0 && (
+                <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border z-[120] w-64 max-h-48 overflow-y-auto">
+                  <div className="p-2 bg-indigo-50 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Mentioning...</div>
+                  {filteredUsers.map(u => (
+                    <button key={u.id} onClick={() => insertMention(u.full_name)} className="w-full text-left px-4 py-3 text-[16px] hover:bg-slate-50 flex items-center gap-2 border-b last:border-0 transition-colors">
+                      <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">{u.full_name.charAt(0)}</div>
+                      <span className="text-slate-900 font-bold">{u.full_name}</span>
+                    </button>
+                  ))}
+                </div>
               )}
-              <div ref={messagesEndRef} />
+
+              {replyingTo && (
+                <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-xl px-4 py-2 mb-2 animate-in slide-in-from-bottom-2">
+                  <div className="text-xs text-slate-500">Replying to <span className="font-bold text-indigo-600">{replyingTo.author_name}</span></div>
+                  <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-rose-500"><X size={14}/></button>
+                </div>
+              )}
+
+              {isRecording ? (
+                <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-pulse">
+                   <div className="text-red-600 font-bold text-sm flex items-center gap-2">
+                      <div className="w-2 h-2 bg-red-600 rounded-full animate-ping"/>
+                      Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
+                   </div>
+                   <div className="flex gap-2">
+                      <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18}/></button>
+                      <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg active:scale-95 transition-all">Done</button>
+                   </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
+                  <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 text-slate-400 h-11 hover:text-indigo-500 transition-colors"><Smile size={22} /></button>
+                  <textarea 
+                    ref={textareaRef} 
+                    value={newMessage} 
+                    onChange={handleTextChange} 
+                    onKeyDown={handleKeyDown}
+                    placeholder="Speak to the brethren..."
+                    className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32 placeholder:text-slate-400 leading-tight"
+                    rows={1}
+                  />
+                  {newMessage.trim() ? (
+                    <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-11 flex items-center justify-center transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600 shadow-orange-100' : currentRoom === 'private' ? 'bg-emerald-600 shadow-emerald-100' : 'bg-indigo-600 shadow-indigo-100'} shadow-lg`}>
+                      {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-11 shadow-lg shadow-orange-100 active:scale-90 transition-all flex items-center justify-center"><Mic size={22} /></button>
+                  )}
+                </form>
+              )}
+
+              {showEmojiPicker && (
+                <div className="absolute bottom-full left-4 mb-2 z-[100] shadow-2xl rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                  <EmojiPicker onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} emojiStyle={EmojiStyle.NATIVE} width={300} height={350} />
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Input Area */}
-          <div className="shrink-0 bg-white border-t sticky bottom-0 z-50 pb-[env(safe-area-inset-bottom,16px)] pt-2 px-4">
-            {showMentionList && filteredUsers.length > 0 && (
-              <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border z-[120] w-64 max-h-48 overflow-y-auto">
-                <div className="p-2 bg-indigo-50 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Mentioning...</div>
-                {filteredUsers.map(u => (
-                  <button key={u.id} onClick={() => insertMention(u.full_name)} className="w-full text-left px-4 py-3 text-[16px] hover:bg-slate-50 flex items-center gap-2 border-b last:border-0 transition-colors">
-                    <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold">{u.full_name.charAt(0)}</div>
-                    <span className="text-slate-900 font-bold">{u.full_name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {replyingTo && (
-              <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-t-xl px-4 py-2 mb-2 animate-in slide-in-from-bottom-2">
-                <div className="text-xs text-slate-500">Replying to <span className="font-bold text-indigo-600">{replyingTo.author_name}</span></div>
-                <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-rose-500 transition-colors"><X size={14}/></button>
-              </div>
-            )}
-
-            {isRecording ? (
-              <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-pulse">
-                <div className="text-red-600 font-bold text-sm flex items-center gap-2">
-                  <div className="w-2 h-2 bg-red-600 rounded-full animate-ping"/>Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18}/></button>
-                  <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg active:scale-95 transition-all">Done</button>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
-                <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3 rounded-xl border bg-slate-50 text-slate-400 h-11 hover:text-indigo-500 transition-colors"><Smile size={22} /></button>
-                <textarea 
-                  ref={textareaRef} 
-                  value={newMessage} 
-                  onChange={handleTextChange} 
-                  onKeyDown={handleKeyDown}
-                  placeholder="Speak to the brethren..." 
-                  className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none min-h-[44px] max-h-32 placeholder:text-slate-400 leading-tight" 
-                  rows={1}
-                />
-                {newMessage.trim() ? (
-                  <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-11 flex items-center justify-center transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600 shadow-orange-100' : currentRoom === 'private' ? 'bg-emerald-600 shadow-emerald-100' : 'bg-indigo-600 shadow-indigo-100'} shadow-lg`}>
-                    {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                  </button>
-                ) : (
-                  <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-11 shadow-lg active:scale-90 transition-all flex items-center justify-center"><Mic size={22} /></button>
-                )}
-              </form>
-            )}
-
-            {showEmojiPicker && (
-              <div className="absolute bottom-full left-4 mb-2 z-[100] shadow-2xl rounded-2xl border border-slate-200 overflow-hidden bg-white">
-                <EmojiPicker onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} emojiStyle={EmojiStyle.NATIVE} width={300} height={350} />
-              </div>
-            )}
-          </div>
-        </div>
+        </>
       )}
+
+      {/* Manual CSS for Scrollbar */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; display: block !important; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      `}} />
     </>
   );
 }
