@@ -12,7 +12,7 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
-  // --- CORE STATE ---
+  // --- CORE STATE (Restored Private Chat Logic) ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(isFullPage || false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -28,6 +28,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [hasNewDM, setHasNewDM] = useState(false);
+  const [activeDMPartners, setActiveDMPartners] = useState<any[]>([]);
 
   // --- UI INTERACTION STATE ---
   const [showMentionList, setShowMentionList] = useState(false);
@@ -49,8 +50,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null); 
 
-  // --- VIEWPORT STABILITY (iOS & DESKTOP FIXES) ---
+  // --- MOBILE KEYBOARD & VIEWPORT FIXES ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [dynamicHeight, setDynamicHeight] = useState('100dvh');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,9 +62,14 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         const height = window.visualViewport.height;
         const isKeyboard = height < window.innerHeight * 0.85;
         setIsKeyboardOpen(isKeyboard);
+        setDynamicHeight(`${height}px`);
         
-        // Prevent layout drift on iOS
-        if (isKeyboard) window.scrollTo(0, 0);
+        if (isKeyboard) {
+            window.scrollTo(0, 0);
+            setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+        }
       }
     };
 
@@ -75,7 +82,14 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     };
   }, [isOpen]);
 
-  // Initial Sound Setup
+  useEffect(() => {
+    if (replyingTo) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+    }
+  }, [replyingTo]);
+
   useEffect(() => {
     sendAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
     receiveAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
@@ -97,12 +111,34 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       const startDate = new Date('2026-01-08T00:00:00'); 
       const today = new Date();
       const diffDays = Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      
       const currentDay = Math.max(1, Math.min(21, diffDays));
       const { data: dayData } = await supabase.from('fasting_days').select('scripture').eq('day_number', currentDay).single();
       setFastingPreaching(dayData?.scripture || "Wait on the Lord, and He shall strengthen thine heart.");
     };
     loadContent();
+
+    // Logic to find only people you have messaged before
+    const fetchActiveDMPartners = async () => {
+      const { data: dmHistory } = await supabase
+        .from('messages')
+        .select('user_id, receiver_id')
+        .eq('room_category', 'private')
+        .or(`user_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+      if (dmHistory) {
+        const partnerIds = new Set<string>();
+        dmHistory.forEach(m => {
+          if (m.user_id !== user.id) partnerIds.add(m.user_id);
+          if (m.receiver_id && m.receiver_id !== user.id) partnerIds.add(m.receiver_id);
+        });
+        const { data: partners } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', Array.from(partnerIds));
+        if (partners) setActiveDMPartners(partners);
+      }
+    };
+    fetchActiveDMPartners();
 
     const fetchMessages = async () => {
       let query = supabase.from('messages').select(`*, reply_to:reply_to_id(content, author_name, type)`).order('created_at', { ascending: false }).limit(50);
@@ -130,6 +166,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     const channel = supabase.channel(`room-listener-${currentRoom}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, async (payload) => {
           if (payload.eventType === 'INSERT') {
+            // Pulse Logic
+            if (payload.new.room_category === 'private' && payload.new.receiver_id === user.id) {
+                if (currentRoom !== 'private' || selectedRecipient?.id !== payload.new.user_id) {
+                    setHasNewDM(true);
+                    setUnreadSenders(prev => [...new Set([...prev, payload.new.user_id])]);
+                    playSound('receive');
+                    fetchActiveDMPartners();
+                }
+            }
+
             if (payload.new.room_category === currentRoom) {
                 const isRelevant = currentRoom !== 'private' || (
                   (payload.new.user_id === user.id && payload.new.receiver_id === selectedRecipient?.id) ||
@@ -149,10 +195,14 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   }, [isOpen, user.id, currentRoom, selectedRecipient]);
 
   useEffect(() => {
-    if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, editingId, replyingTo]);
+    if (unreadSenders.length === 0) setHasNewDM(false);
+  }, [unreadSenders]);
 
-  // --- ACTIONS ---
+  useEffect(() => {
+    if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, editingId]);
+
+  // --- HANDLERS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -244,12 +294,11 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   };
 
   const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
-  const filteredDirectory = allUsers.filter(u => u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <>
       {!isOpen && (
-        <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-6 z-40 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110">
+        <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-6 z-40 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95">
           <MessageCircle size={28} fill="currentColor" />
           {hasNewDM && <span className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 rounded-full border-2 border-white animate-pulse" />}
         </button>
@@ -259,14 +308,17 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsOpen(false)} />
 
-          <div className={`
-            fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
-            left-0 right-0 top-[60px] ${isKeyboardOpen ? 'bottom-0' : 'bottom-[80px]'}
-            md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
-            overflow-hidden
-          `}>
+          <div 
+            style={{ height: window.innerWidth < 768 ? dynamicHeight : '70vh', bottom: isKeyboardOpen ? '0' : '80px' }}
+            className={`
+                fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
+                left-0 right-0 top-[60px] md:top-auto
+                md:left-auto md:right-6 md:bottom-24 md:w-[420px] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
+                overflow-hidden
+            `}
+          >
             
-            {/* 1. TABS (The Forge Brand) */}
+            {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
                <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
                   <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
@@ -277,11 +329,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   </button>
                   <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
                     <Mail size={14} /> DMs
+                    {hasNewDM && currentRoom !== 'private' && <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
                   </button>
                </div>
             </div>
 
-            {/* 2. HEADER (Design Synchronized) */}
+            {/* HEADER */}
             <div className={`px-5 py-3 flex items-center justify-between border-b border-white/5 shrink-0 transition-colors ${currentRoom === 'fasting' ? 'bg-orange-950' : currentRoom === 'private' ? 'bg-emerald-950' : 'bg-slate-900'}`}>
               <div className="flex flex-col">
                 <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">The Forge</span>
@@ -299,33 +352,34 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               <button onClick={() => setIsOpen(false)} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
             </div>
 
-            {/* 3. CONTENT AREA */}
+            {/* MESSAGE AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
               
-              {/* Directory for DMs */}
+              {/* Active DMs Only (No search directory) */}
               {currentRoom === 'private' && !selectedRecipient && (
-                <div className="absolute inset-0 bg-white z-20 flex flex-col p-4">
-                  <div className="relative mb-4">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                    <input 
-                      type="text" placeholder="Find a brother..." 
-                      className="w-full bg-slate-100 border-none rounded-2xl pl-12 pr-4 py-4 text-[16px] font-bold outline-none"
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                    {filteredDirectory.map(u => (
-                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all font-bold text-slate-700 shadow-sm">
-                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">{u.full_name[0]}</div>
-                        {u.full_name}
-                        <UserPlus size={16} className="ml-auto text-slate-300" />
-                      </button>
-                    ))}
+                <div className="absolute inset-0 bg-white z-20 flex flex-col p-6">
+                   <h4 className="text-[10px] font-black uppercase text-slate-400 mb-4 tracking-widest">Active Conversations</h4>
+                  <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+                    {activeDMPartners.length === 0 ? (
+                        <div className="text-center py-20 opacity-30">
+                            <Mail size={40} className="mx-auto mb-2" />
+                            <p className="text-[10px] font-black uppercase">No Private Chats Yet</p>
+                        </div>
+                    ) : (
+                        activeDMPartners.map(u => (
+                            <button key={u.id} onClick={() => setSelectedRecipient(u)} className="w-full flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all shadow-sm">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">{u.full_name[0]}</div>
+                                    <span className="font-bold text-slate-700">{u.full_name}</span>
+                                </div>
+                                {unreadSenders.includes(u.id) && <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />}
+                            </button>
+                        ))
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Message List */}
               <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar" onClick={() => setActiveMenuId(null)}>
                 {currentRoom === 'fasting' && (
                   <div className="bg-orange-50 border-y border-orange-100 p-6 mb-6 -mx-4 text-center">
@@ -360,8 +414,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                             <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}><MoreVertical size={14} /></button>
                             
                             {activeMenuId === msg.id && (
-                              <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border border-slate-100 w-32 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
+                              <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border border-slate-100 w-36 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
                                 <button onClick={() => {setReplyingTo(msg); setActiveMenuId(null);}} className="text-left px-3 py-2 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold"><CornerUpLeft size={12} /> Reply</button>
+                                {!isMe && <button onClick={() => { setSelectedRecipient({id: msg.user_id, full_name: msg.author_name}); setCurrentRoom('private'); setActiveMenuId(null); }} className="text-left px-3 py-2 text-[11px] text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-bold"><Mail size={12} /> Chat Privately</button>}
                                 {isMe && <button onClick={() => {setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null);}} className="text-left px-3 py-2 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold"><Edit2 size={12} /> Edit</button>}
                                 {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2 text-[11px] text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold"><Trash2 size={12} /> Delete</button>}
                               </div>
@@ -376,7 +431,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               </div>
             </div>
 
-            {/* 4. INPUT AREA */}
+            {/* INPUT SECTION */}
             <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
@@ -387,9 +442,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               )}
 
               {replyingTo && (
-                <div className="flex items-center justify-between bg-slate-50 p-2 rounded-t-xl mb-2 text-[11px] font-bold text-slate-500 px-4 border-x border-t border-slate-100">
-                  <span>Replying to {replyingTo.author_name}</span>
-                  <button onClick={() => setReplyingTo(null)}><X size={12}/></button>
+                <div className="flex items-center justify-between bg-slate-50 p-2 rounded-t-xl mb-1 text-[11px] font-bold text-slate-500 px-4 border-x border-t border-slate-100 animate-in slide-in-from-bottom-1">
+                  <span className="truncate pr-4">Replying to {replyingTo.author_name}</span>
+                  <button onClick={() => setReplyingTo(null)} className="p-1"><X size={12}/></button>
                 </div>
               )}
 
@@ -404,15 +459,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                    </div>
                 </div>
               ) : (
-                <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
+                <form onSubmit={handleSendMessage} className={`flex gap-2 items-end ${replyingTo ? 'bg-slate-50/50 p-2 rounded-b-2xl border-x border-b border-slate-100' : ''}`}>
                   <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 h-12 w-12 flex items-center justify-center shrink-0"><Smile size={24} /></button>
                   <textarea 
-                    value={newMessage} 
-                    onChange={handleTextChange} 
-                    placeholder="Write to the Forge..."
+                    value={newMessage} onChange={handleTextChange} placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
-                    rows={1}
-                    onFocus={() => { if(window.innerWidth < 768) setIsKeyboardOpen(true); }}
+                    rows={1} onFocus={() => { if(window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} shadow-xl`}>
@@ -436,7 +488,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
       `}} />
