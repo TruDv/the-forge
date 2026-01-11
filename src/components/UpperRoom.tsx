@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
-  Mic, Square, Trash2, Play, Pause, MoreVertical, Edit2, Check,
+  Mic, Trash2, Play, MoreVertical, Edit2, Check,
   CornerUpLeft, Flame, Mail, Globe, Quote, Search, UserPlus
 } from 'lucide-react';
 import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
@@ -12,7 +12,6 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
-  // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(isFullPage || false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -20,85 +19,48 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [isSending, setIsSending] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
-  
-  // --- ROOM & DM STATE ---
   const [currentRoom, setCurrentRoom] = useState<RoomType>('general');
   const [fastingPreaching, setFastingPreaching] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [hasNewDM, setHasNewDM] = useState(false);
-
-  // --- UI INTERACTION STATE ---
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-
-  // --- AUDIO STATE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null); 
-
-  // --- iOS VIEWPORT STABILITY FIX ---
-  const [viewportHeight, setViewportHeight] = useState('100vh');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleVisualViewportResize = () => {
-      if (window.visualViewport) {
-        // This calculates the exact height above the keyboard
-        setViewportHeight(`${window.visualViewport.height}px`);
-        window.scrollTo(0, 0);
-      }
-    };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleVisualViewportResize);
-      window.visualViewport.addEventListener('scroll', handleVisualViewportResize);
-      handleVisualViewportResize();
-    }
-
-    // Scroll lock to prevent the main page from moving
     document.body.style.overflow = 'hidden';
     document.body.style.position = 'fixed';
     document.body.style.width = '100%';
 
+    const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
+    const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
+    sendAudioRef.current = new Audio(backupSent);
+    receiveAudioRef.current = new Audio(backupRec);
+
     return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
-        window.visualViewport.removeEventListener('scroll', handleVisualViewportResize);
-      }
       document.body.style.overflow = '';
       document.body.style.position = '';
       document.body.style.width = '';
     };
   }, [isOpen]);
 
-  // Sound setup
-  useEffect(() => {
-    const backupSent = "https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3";
-    const backupRec = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
-    sendAudioRef.current = new Audio(backupSent);
-    receiveAudioRef.current = new Audio(backupRec);
-  }, []);
-
-  const playSound = (type: 'send' | 'receive') => {
-    const audio = type === 'send' ? sendAudioRef.current : receiveAudioRef.current;
-    if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
-  };
-
-  // --- DATA FETCHING & REALTIME ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -159,7 +121,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   const { data: newMsg } = await supabase.from('messages').select('*, reply_to:reply_to_id(content, author_name, type)').eq('id', payload.new.id).single();
                   if (newMsg) {
                     setMessages((current) => [...current, newMsg]);
-                    if (newMsg.user_id !== user.id) playSound('receive');
+                    if (newMsg.user_id !== user.id) {
+                      receiveAudioRef.current?.play().catch(() => {});
+                    }
                   }
                 }
             }
@@ -181,7 +145,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         if (isPrivate && isForMe && notLookingAtThisChat) {
           setHasNewDM(true);
           setUnreadSenders(prev => [...new Set([...prev, payload.new.user_id])]);
-          playSound('receive');
+          receiveAudioRef.current?.play().catch(() => {});
         }
       }).subscribe();
 
@@ -195,11 +159,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private' && unreadSenders.length === 0) setHasNewDM(false);
   }, [currentRoom, unreadSenders]);
 
-  useEffect(() => {
-    if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen, editingId, replyingTo]);
-
-  // --- ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user) return;
@@ -222,7 +181,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       receiver_id: currentRoom === 'private' ? selectedRecipient.id : null
     }]);
 
-    if (!error) playSound('send');
+    if (!error) sendAudioRef.current?.play().catch(() => {});
     setIsSending(false);
   };
 
@@ -270,7 +229,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   };
 
-  // --- AUDIO LOGIC ---
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -301,7 +259,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
           room_category: currentRoom, 
           receiver_id: currentRoom === 'private' ? selectedRecipient?.id : null 
         }]);
-        playSound('send');
+        sendAudioRef.current?.play().catch(() => {});
       };
     }
   };
@@ -319,27 +277,43 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
   const filteredDirectory = allUsers.filter(u => u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  // --- RENDER ---
   return (
     <>
       {!isOpen && !isFullPage && (
-        <button onClick={() => setIsOpen(true)} className="fixed bottom-20 right-6 z-[40] bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110 active:scale-95">
+        <button 
+          onClick={() => setIsOpen(true)} 
+          className="fixed bottom-20 right-6 z-[40] bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all group hover:scale-110 active:scale-95"
+        >
           <MessageCircle size={28} fill="currentColor" />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
+          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
         </button>
       )}
 
       {isOpen && (
-        <div 
-          className={isFullPage ? "flex flex-col bg-white" : "fixed inset-0 z-[100] bg-white flex flex-col"}
-          style={{ height: isFullPage ? '100%' : viewportHeight }} // STRICT HEIGHT
-        >
-          {!isFullPage && <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" onClick={() => setIsOpen(false)} />}
+        <div className="fixed inset-0 z-[100] pointer-events-none">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto" 
+            onClick={() => setIsOpen(false)} 
+          />
 
-          {/* Wrapper that forces Flex-Column to use full height */}
-          <div className={`relative bg-white flex flex-col transition-all h-full w-full ${!isFullPage && 'max-w-md shadow-2xl'}`}>
-            
-            {/* 1. ROOM TABS (Fixed at Top) */}
+          {/* Bottom Sheet */}
+          <div 
+            className={`
+              absolute bottom-0 left-0 right-0 z-[101] 
+              max-h-[90vh] h-fit bg-white rounded-t-3xl shadow-2xl
+              flex flex-col pointer-events-auto
+              transition-transform duration-300 ease-out
+              ${isOpen ? 'translate-y-0' : 'translate-y-full'}
+            `}
+          >
+            {/* Drag handle */}
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto my-3" />
+
+            {/* Tabs */}
             <div className="shrink-0 bg-slate-950 px-2 pt-[env(safe-area-inset-top,8px)] z-50">
               <div className="flex bg-white/5 p-1 rounded-xl gap-1">
                 <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
@@ -360,14 +334,14 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               </div>
             </div>
 
-            {/* 2. SUB-HEADER (Fixed Below Tabs) */}
-            <div className="bg-slate-900 p-4 flex items-center justify-between shrink-0 z-50 border-b border-white/5">
+            {/* Sub Header */}
+            <div className="shrink-0 bg-slate-900 p-4 flex items-center justify-between border-b border-white/5 z-50">
               <div className="flex items-center gap-3">
                 {currentRoom === 'private' && selectedRecipient && (
                   <button onClick={() => setSelectedRecipient(null)} className="text-white bg-white/10 p-1.5 rounded-lg"><X size={14}/></button>
                 )}
                 <h3 className="text-white font-black italic uppercase text-xs flex items-center gap-2">
-                   {currentRoom === 'private' && selectedRecipient ? (
+                  {currentRoom === 'private' && selectedRecipient ? (
                     <span className="flex items-center gap-2 text-emerald-400">
                       <div className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[8px] flex items-center justify-center font-black">{selectedRecipient.full_name.charAt(0)}</div>
                       {selectedRecipient.full_name}
@@ -377,14 +351,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   )}
                 </h3>
               </div>
-              {!isFullPage && <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white active:scale-90 transition-transform"><X size={26}/></button>}
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white active:scale-90 transition-transform"><X size={26}/></button>
             </div>
 
-            {/* 3. SCROLLABLE CONTENT (Takes up all middle space) */}
-            <div className="flex-1 relative flex flex-col min-h-0 bg-slate-50 overflow-hidden">
-               
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto bg-slate-50 min-h-0">
               {currentRoom === 'private' && !selectedRecipient && (
-                <div className="absolute inset-0 bg-white z-[60] flex flex-col">
+                <div className="flex flex-col h-full">
                   <div className="p-4 border-b border-slate-100 bg-slate-50">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
@@ -422,10 +395,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                 </div>
               )}
 
-              {/* MESSAGES FEED */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 overscroll-contain" onClick={() => setActiveMenuId(null)}>
+              <div className="p-4 space-y-4" onClick={() => setActiveMenuId(null)}>
                 {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50"><MessageCircle size={48} className="mb-2" /><p className="text-sm font-bold uppercase tracking-widest">Room is Quiet</p></div>
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">
+                    <MessageCircle size={48} className="mb-2" />
+                    <p className="text-sm font-bold uppercase tracking-widest">Room is Quiet</p>
+                  </div>
                 ) : (
                   messages.map((msg, index) => {
                     const isMe = msg.user_id === user.id;
@@ -445,17 +420,20 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                             )}
 
                             {isEditing ? (
-                               <div className="flex flex-col gap-2 min-w-[200px]">
-                                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 font-bold bg-white rounded p-2 text-[16px] outline-none ring-2 ring-orange-500" rows={2}/>
-                                  <div className="flex justify-end gap-2"><button onClick={() => setEditingId(null)} className="text-xs text-slate-400">Cancel</button><button onClick={() => saveEdit(msg.id)} className="bg-white text-indigo-600 px-2 py-1 rounded text-xs font-bold border shadow-sm"><Check size={12}/> Save</button></div>
-                               </div>
+                              <div className="flex flex-col gap-2 min-w-[200px]">
+                                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full text-slate-900 font-bold bg-white rounded p-2 text-[16px] outline-none ring-2 ring-orange-500" rows={2}/>
+                                <div className="flex justify-end gap-2">
+                                  <button onClick={() => setEditingId(null)} className="text-xs text-slate-400">Cancel</button>
+                                  <button onClick={() => saveEdit(msg.id)} className="bg-white text-indigo-600 px-2 py-1 rounded text-xs font-bold border shadow-sm"><Check size={12}/> Save</button>
+                                </div>
+                              </div>
                             ) : (
-                               msg.type === 'audio' ? (
-                                 <div className="flex items-center gap-2 min-w-[150px] py-1">
-                                   <div className={`p-2 rounded-full ${isMe ? 'bg-indigo-500' : 'bg-slate-100'}`}><Play size={14} fill="currentColor" /></div>
-                                   <audio controls src={msg.media_url} className="h-8 w-44" />
-                                 </div>
-                               ) : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
+                              msg.type === 'audio' ? (
+                                <div className="flex items-center gap-2 min-w-[150px] py-1">
+                                  <div className={`p-2 rounded-full ${isMe ? 'bg-indigo-500' : 'bg-slate-100'}`}><Play size={14} fill="currentColor" /></div>
+                                  <audio controls src={msg.media_url} className="h-8 w-44" />
+                                </div>
+                              ) : <p className="whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
                             )}
 
                             {!isEditing && (
@@ -484,9 +462,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               </div>
             </div>
 
-            {/* 4. INPUT BLOCK (Fixed at Bottom) */}
-            <div className={`shrink-0 p-4 bg-white border-t relative pb-[max(1.5rem,env(safe-area-inset-bottom))]`}>
-              
+            {/* Input Area */}
+            <div className="shrink-0 bg-white border-t sticky bottom-0 z-50 pb-[env(safe-area-inset-bottom,16px)] pt-2 px-4">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border z-[120] w-64 max-h-48 overflow-y-auto">
                   <div className="p-2 bg-indigo-50 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Mentioning...</div>
@@ -508,11 +485,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
               {isRecording ? (
                 <div className="flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-3 animate-pulse">
-                   <div className="text-red-600 font-bold text-sm flex items-center gap-2"><div className="w-2 h-2 bg-red-600 rounded-full animate-ping"/>Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</div>
-                   <div className="flex gap-2">
-                      <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18}/></button>
-                      <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg active:scale-95 transition-all">Done</button>
-                   </div>
+                  <div className="text-red-600 font-bold text-sm flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-600 rounded-full animate-ping"/>Recording... 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={cancelRecording} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18}/></button>
+                    <button onClick={stopRecording} className="p-2 bg-red-600 text-white rounded-lg text-xs font-black uppercase shadow-lg active:scale-95 transition-all">Done</button>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
@@ -523,8 +502,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     onChange={handleTextChange} 
                     onKeyDown={handleKeyDown}
                     placeholder="Speak to the brethren..." 
-                    className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32 placeholder:text-slate-400 leading-tight" 
-                    rows={1} 
+                    className="flex-1 bg-slate-100 border-none rounded-2xl px-4 py-3 text-[16px] text-slate-900 font-bold outline-none resize-none min-h-[44px] max-h-32 placeholder:text-slate-400 leading-tight" 
+                    rows={1}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-11 flex items-center justify-center transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600 shadow-orange-100' : currentRoom === 'private' ? 'bg-emerald-600 shadow-emerald-100' : 'bg-indigo-600 shadow-indigo-100'} shadow-lg`}>
