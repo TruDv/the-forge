@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation'; // Added for redirect
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
@@ -12,6 +13,8 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
+  const router = useRouter(); // Initialize router
+
   // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(isFullPage || false);
@@ -47,10 +50,25 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null); 
 
   // --- VIEWPORT STABILITY ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
+  // Handle Closing & Redirecting
+  const handleClose = () => {
+    setIsOpen(false);
+    // If on mobile (screen < 768px), redirect to home
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      router.push('/');
+    }
+  };
+
+  // Logic to clear the red pulse when entering the DM tab
+  useEffect(() => {
+    if (currentRoom === 'private') {
+      setHasNewDM(false);
+    }
+  }, [currentRoom]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -106,7 +124,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         query = query.eq('room_category', 'private')
                      .or(`and(user_id.eq.${user.id},receiver_id.eq.${selectedRecipient.id}),and(user_id.eq.${selectedRecipient.id},receiver_id.eq.${user.id})`);
         setUnreadSenders(prev => prev.filter(id => id !== selectedRecipient.id));
-        if (unreadSenders.length <= 1) setHasNewDM(false);
       } else {
         query = query.eq('room_category', currentRoom);
       }
@@ -128,9 +145,11 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             const isDM = payload.new.room_category === 'private';
             const isForMe = payload.new.receiver_id === user.id;
 
-            if (isDM && isForMe && (currentRoom !== 'private' || selectedRecipient?.id !== payload.new.user_id)) {
-                setHasNewDM(true);
-                setUnreadSenders(prev => Array.from(new Set([...prev, payload.new.user_id])));
+            if (isDM && isForMe) {
+                if (currentRoom !== 'private') {
+                  setHasNewDM(true);
+                  setUnreadSenders(prev => Array.from(new Set([...prev, payload.new.user_id])));
+                }
                 playSound('receive');
             }
 
@@ -279,8 +298,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        
-        // Ensure extension matches mimeType for mobile playback compatibility
         const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
         const fileName = `${user.id}_${Date.now()}.${extension}`;
 
@@ -291,10 +308,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             cacheControl: '3600'
           });
 
-        if (uploadError) {
-          console.error("Upload Error:", uploadError);
-          return;
-        }
+        if (uploadError) return;
 
         const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
         
@@ -309,7 +323,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         }]);
         
         playSound('send');
-        // Clean up stream
         mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
       };
     }
@@ -324,16 +337,26 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   return (
     <>
+      {/* Modified to 'hidden md:flex'. 
+        The icon will now only appear on Desktop (medium screens and up) 
+      */}
       {!isOpen && (
-        <button onClick={() => setIsOpen(true)} className="fixed bottom-24 right-6 z-40 bg-indigo-600 text-white p-4 rounded-full shadow-2xl transition-all hover:scale-110">
-          <MessageCircle size={28} fill="currentColor" />
-          {hasNewDM && <span className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 rounded-full border-2 border-white animate-pulse" />}
+        <button 
+          onClick={() => setIsOpen(true)} 
+          className={`hidden md:flex fixed bottom-24 right-6 z-40 text-white p-3 rounded-full shadow-2xl transition-all hover:scale-110 
+            ${hasNewDM ? 'bg-red-600 animate-pulse-fast' : 'bg-indigo-600 animate-pulse-slow'}`}
+        >
+          <MessageCircle size={24} fill="currentColor" />
+          {hasNewDM && (
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 rounded-full border-2 border-white" />
+          )}
+          <span className={`absolute inset-0 rounded-full -z-10 animate-ping opacity-25 ${hasNewDM ? 'bg-red-400' : 'bg-indigo-400'}`} />
         </button>
       )}
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setIsOpen(false)} />
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
           <div className={`
             fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
@@ -373,7 +396,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                   )}
                 </h3>
               </div>
-              <button onClick={() => setIsOpen(false)} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
+              <button onClick={handleClose} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
             </div>
 
             {/* 3. CONTENT AREA */}
@@ -496,7 +519,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
-                    onFocus={() => { if(window.innerWidth < 768) setIsKeyboardOpen(true); }}
+                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} shadow-xl`}>
@@ -523,6 +546,25 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
+
+        /* Idle State Pulse */
+        @keyframes pulse-slow {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
+          50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 3s infinite ease-in-out;
+        }
+
+        /* Urgent Alert Pulse */
+        @keyframes pulse-fast {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
+          50% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(220, 38, 38, 0); }
+        }
+        .animate-pulse-fast {
+          animation: pulse-fast 1.5s infinite ease-in-out;
+        }
+
         audio::-webkit-media-controls-enclosure {
             background-color: transparent !important;
         }
