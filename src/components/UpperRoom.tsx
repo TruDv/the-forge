@@ -128,7 +128,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             const isDM = payload.new.room_category === 'private';
             const isForMe = payload.new.receiver_id === user.id;
 
-            // Global Notification Logic
             if (isDM && isForMe && (currentRoom !== 'private' || selectedRecipient?.id !== payload.new.user_id)) {
                 setHasNewDM(true);
                 setUnreadSenders(prev => Array.from(new Set([...prev, payload.new.user_id])));
@@ -240,36 +239,78 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
+  // --- UNIVERSAL AUDIO HELPERS ---
+  const getSupportedMimeType = () => {
+    const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return "";
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const mimeType = getSupportedMimeType();
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => audioChunksRef.current.push(event.data);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
-    } catch (err) { alert("Mic access denied."); }
+    } catch (err) { 
+      console.error(err);
+      alert("Mic access denied or not supported on this browser."); 
+    }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
+    if (mediaRecorderRef.current && isRecording) {
+      const mimeType = mediaRecorderRef.current.mimeType;
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
+
       mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const fileName = `${user.id}_${Date.now()}.webm`;
-        await supabase.storage.from('chat-media').upload(fileName, audioBlob);
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        
+        // Ensure extension matches mimeType for mobile playback compatibility
+        const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
+        const fileName = `${user.id}_${Date.now()}.${extension}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('chat-media')
+          .upload(fileName, audioBlob, {
+            contentType: mimeType,
+            cacheControl: '3600'
+          });
+
+        if (uploadError) {
+          console.error("Upload Error:", uploadError);
+          return;
+        }
+
         const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
+        
         await supabase.from('messages').insert([{ 
-          content: 'Voice Note', type: 'audio', media_url: publicUrl, 
-          user_id: user.id, author_name: profileName || 'Puritan', 
-          room_category: currentRoom, receiver_id: selectedRecipient?.id 
+          content: 'Voice Note', 
+          type: 'audio', 
+          media_url: publicUrl, 
+          user_id: user.id, 
+          author_name: profileName || 'Puritan', 
+          room_category: currentRoom, 
+          receiver_id: selectedRecipient?.id 
         }]);
+        
         playSound('send');
+        // Clean up stream
+        mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
       };
     }
   };
@@ -338,7 +379,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             {/* 3. CONTENT AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
               
-              {/* Existing Conversations for DMs */}
               {currentRoom === 'private' && !selectedRecipient && (
                 <div className="absolute inset-0 bg-white z-20 flex flex-col p-4">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -365,7 +405,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                 </div>
               )}
 
-              {/* Message List */}
               <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar" onClick={() => setActiveMenuId(null)}>
                 {currentRoom === 'fasting' && (
                   <div className="bg-orange-50 border-y border-orange-100 p-6 mb-6 -mx-4 text-center">
@@ -394,7 +433,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                             {isEditing ? (
                                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} onBlur={() => saveEdit(msg.id)} className="w-full text-slate-900 font-bold bg-white rounded p-1 text-[16px] outline-none" autoFocus />
                             ) : (
-                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-8 w-44" /> : <p className="leading-relaxed whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
+                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-10 w-48 md:w-56" /> : <p className="leading-relaxed whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
                             )}
                             
                             <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}><MoreVertical size={14} /></button>
@@ -440,13 +479,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
               {isRecording ? (
                 <div className="flex items-center justify-between bg-rose-50 border border-rose-100 rounded-2xl px-5 py-3 animate-pulse">
-                   <div className="text-rose-600 font-black text-xs flex items-center gap-2 uppercase tracking-widest">
-                      <div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
-                   </div>
-                   <div className="flex gap-2">
-                      <button onClick={() => setIsRecording(false)} className="p-2 text-slate-400"><Trash2 size={20}/></button>
-                      <button onClick={stopRecording} className="px-4 py-1.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg">Finish</button>
-                   </div>
+                    <div className="text-rose-600 font-black text-xs flex items-center gap-2 uppercase tracking-widest">
+                       <div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
+                    </div>
+                    <div className="flex gap-2">
+                       <button onClick={() => { setIsRecording(false); if(timerRef.current) clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }} className="p-2 text-slate-400"><Trash2 size={20}/></button>
+                       <button onClick={stopRecording} className="px-4 py-1.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg">Finish</button>
+                    </div>
                 </div>
               ) : (
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
@@ -484,6 +523,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
+        audio::-webkit-media-controls-enclosure {
+            background-color: transparent !important;
+        }
       `}} />
     </>
   );
