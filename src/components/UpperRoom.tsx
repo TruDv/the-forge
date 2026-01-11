@@ -41,36 +41,67 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // ── Improved open/close + blank screen fix ──────────────────────────────
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
+      document.body.style.inset = '0';
       document.body.style.width = '100%';
       document.body.style.height = '100%';
     } else {
-      // Full cleanup + reflow to prevent blank screen
+      // Aggressive cleanup + reflow to prevent white/black flash
       document.body.style.overflow = '';
       document.body.style.position = '';
+      document.body.style.inset = '';
       document.body.style.width = '';
       document.body.style.height = '';
 
-      // Small delay + reflow trick (fixes iOS/Safari blank screen)
+      // Force browser to repaint
       setTimeout(() => {
-        document.body.style.transform = 'translateZ(0)';
-        document.body.offsetHeight; // force reflow
-        document.body.style.transform = '';
-      }, 30);
+        window.scrollTo(0, 0);
+        document.documentElement.style.display = 'none';
+        document.documentElement.offsetHeight; // reflow
+        document.documentElement.style.display = '';
+      }, 0);
     }
 
     return () => {
       document.body.style.overflow = '';
       document.body.style.position = '';
+      document.body.style.inset = '';
       document.body.style.width = '';
       document.body.style.height = '';
     };
   }, [isOpen]);
 
+  // ── Scroll to bottom on new messages or when keyboard appears ────────────
+  useEffect(() => {
+    if (!messagesEndRef.current) return;
+
+    const scrollToBottom = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    scrollToBottom();
+
+    // Listen for visual viewport changes (keyboard show/hide)
+    const handleViewportChange = () => {
+      scrollToBottom();
+    };
+
+    window.visualViewport?.addEventListener('resize', handleViewportChange);
+    window.visualViewport?.addEventListener('scroll', handleViewportChange);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
+    };
+  }, [messages, isOpen, editingId, replyingTo]);
+
+  // Rest of your data fetching + realtime logic (unchanged)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -301,21 +332,21 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
       {isOpen && (
         <div 
+          ref={containerRef}
           className={`
-            fixed inset-0 z-[100] flex flex-col bg-white 
+            fixed inset-0 z-[100] flex flex-col bg-white
             ${!isFullPage ? 'max-w-md mx-auto shadow-2xl' : 'w-full'}
           `}
         >
-          {/* Smaller & better positioned close button */}
+          {/* Smaller & cleaner close button */}
           <button
             onClick={() => setIsOpen(false)}
             className="
               absolute top-3 right-3 z-[110]
-              bg-white/70 backdrop-blur-sm text-gray-700
+              bg-white/80 backdrop-blur-sm text-gray-700
               p-2 rounded-full shadow-md
               hover:bg-white hover:text-gray-900 hover:scale-105
               transition-all duration-200
-              focus:outline-none focus:ring-2 focus:ring-indigo-400
             "
             aria-label="Close chat"
           >
