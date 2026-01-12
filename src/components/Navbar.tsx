@@ -40,6 +40,8 @@ export default function Navbar() {
   const isInitialMount = useRef(true); 
 
   // --- 1. INITIALIZATION ---
+  const oneSignalInitRef = useRef(false); // Prevents double initialization
+
   useEffect(() => {
     let channel: any;
 
@@ -50,8 +52,10 @@ export default function Navbar() {
     const initSystem = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
-      // Init OneSignal
-      if (typeof window !== 'undefined') {
+      // Init OneSignal (ONLY ONCE)
+      if (typeof window !== 'undefined' && !oneSignalInitRef.current) {
+        oneSignalInitRef.current = true;
+        
         const w = window as any;
         w.OneSignal = w.OneSignal || [];
         w.OneSignal.push(() => {
@@ -118,73 +122,55 @@ export default function Navbar() {
       }
   };
 
-  // --- SMART BELL CLICK HANDLER (UPDATED WITH FEEDBACK) ---
+  // --- DEBUGGING BELL HANDLER ---
   const handleBellClick = async () => {
-    // 1. Clear badge count
+    // 1. Clear badge
     setNotifCount(0);
     
-    // 2. CHECK STATUS
-    const permission = Notification.permission;
+    // 2. LOGGING START
+    console.log("🔔 Bell Clicked! Starting checks...");
     const w = window as any;
 
-    // Safety Check: Is OneSignal loaded?
+    // Check if SDK loaded
     if (!w.OneSignal) {
-        alert("OneSignal not loaded yet. Please refresh.");
+        console.error("❌ CRITICAL: window.OneSignal is missing!");
+        alert("Error: OneSignal failed to load. Do you have an Ad Blocker?");
         return;
     }
 
-    // SCENARIO A: ALREADY SUBSCRIBED
-    if (permission === 'granted') {
-        const userId = await w.OneSignal.getUserId();
-        if (userId) {
-            alert(`✅ You are already subscribed!\nUser ID: ${userId}`);
-            // Force re-sync to database just to be sure
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) syncUserToSupabase(session.user.id);
-        } else {
-            alert("⚠️ Permission is granted, but User ID is missing. Attempting to fix...");
-            await w.OneSignal.setSubscription(true);
-        }
-        return;
-    }
+    console.log("✅ OneSignal Object found.", w.OneSignal);
 
-    // SCENARIO B: BLOCKED
-    if (permission === 'denied') {
-        alert("🚫 Notifications are blocked.\n\nPlease click the Lock icon 🔒 in your address bar and click 'Reset Permission'.");
-        return;
-    }
-
-    // SCENARIO C: NEEDS PERMISSION (Default)
-    // iOS Check
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-
-    if (isIOS && !isStandalone) {
-         alert("📲 To enable notifications on iPhone:\n\n1. Tap Share button below\n2. Tap 'Add to Home Screen'\n3. Open the app from Home Screen");
-         return;
-    }
-
-    // Request Permission
     try {
-        await w.OneSignal.setSubscription(true);
-        // Fallback Native Request
-        const result = await Notification.requestPermission();
-        
-        if (result === 'granted') {
-            const userId = await w.OneSignal.getUserId();
-            alert(`🎉 Success! Notifications Enabled.\nID: ${userId}`);
-            
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) syncUserToSupabase(session.user.id);
-            
-            triggerNotification("Welcome to The Forge!", 'info');
+        // 3. Force the connection
+        console.log("Attempting to Register for Push...");
+        await w.OneSignal.registerForPushNotifications();
+        console.log("✅ Register command sent!");
+
+        // 4. Check Native Permission
+        const permission = await Notification.requestPermission();
+        console.log("📢 Native Permission Status:", permission);
+
+        if (permission === 'granted') {
+             const userId = await w.OneSignal.getUserId();
+             console.log("🆔 User ID:", userId);
+             
+             if (userId) {
+                 alert("SUCCESS! You are subscribed.\nID: " + userId);
+                 // Save to Supabase
+                 const { data: { session } } = await supabase.auth.getSession();
+                 if (session) syncUserToSupabase(session.user.id);
+             } else {
+                 alert("Permission granted, but waiting for ID... (Check Console)");
+             }
         } else {
-            alert("❌ Permission was ignored or dismissed.");
+            alert("⚠️ You clicked 'Block' or closed the popup. You must reset permissions.");
         }
     } catch (e) {
-        alert("Error requesting permission: " + e);
+        console.error("❌ ERROR inside handleBellClick:", e);
+        alert("Detailed Error: " + JSON.stringify(e));
     }
   };
+
   // --- 2. MUSIC INIT ---
   useEffect(() => {
     async function fetchMusic() {
