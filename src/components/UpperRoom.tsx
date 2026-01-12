@@ -50,9 +50,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- ADVANCED KEYBOARD & VIEWPORT FIXES ---
+  // --- KEYBOARD STATE ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -67,39 +66,36 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   }, [currentRoom]);
 
-  // Combined Viewport Logic for iPhone and Android
+  // Keyboard & viewport handling (auto-scroll focused, no translateY)
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleResize = () => {
-      if (window.visualViewport) {
-        const vv = window.visualViewport;
-        const isAndroid = /android/i.test(navigator.userAgent);
-        
-        // Difference between total height and visible height
-        const heightDiff = window.innerHeight - vv.height;
-        const keyboardActive = heightDiff > 60;
-        
-        setIsKeyboardOpen(keyboardActive);
+    const handleViewportChange = () => {
+      if (!window.visualViewport) return;
 
-        if (isAndroid) {
-          // On Android, we explicitly track the offset to shift the UI container
-          setAndroidKeyboardHeight(keyboardActive ? heightDiff : 0);
-        }
-        
-        // Auto-scroll to bottom when keyboard pops up
-        if (keyboardActive) {
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-          }, 100);
-        }
+      const heightDiff = window.innerHeight - window.visualViewport.height;
+      const keyboardActive = heightDiff > 80;
+
+      setIsKeyboardOpen(keyboardActive);
+
+      if (keyboardActive) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }, 140);
       }
     };
 
-    window.visualViewport?.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleViewportChange);
+    window.visualViewport?.addEventListener('scroll', handleViewportChange);
+
+    // Run once on mount
+    handleViewportChange();
+
     document.body.style.overflow = 'hidden';
+
     return () => {
-      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
       document.body.style.overflow = '';
     };
   }, [isOpen]);
@@ -114,7 +110,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // --- DATA FETCHING & REALTIME ---
+  // ────────────────────────────────────────────────
+  // DATA FETCHING & REALTIME
+  // ────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
@@ -193,7 +191,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
-  // --- ACTIVE DM LIST ---
+  // ────────────────────────────────────────────────
+  // ACTIVE DM LIST
+  // ────────────────────────────────────────────────
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -215,7 +215,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
-  // --- CORE ACTIONS ---
+  // ────────────────────────────────────────────────
+  // CORE ACTIONS
+  // ────────────────────────────────────────────────
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -262,8 +264,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     const val = e.target.value;
     setNewMessage(val);
     const lastWord = val.split(/[\s\n]+/).pop(); 
-    if (lastWord && lastWord.startsWith('@')) { setMentionQuery(lastWord.slice(1)); setShowMentionList(true); } 
-    else { setShowMentionList(false); }
+    if (lastWord && lastWord.startsWith('@')) { 
+      setMentionQuery(lastWord.slice(1)); 
+      setShowMentionList(true); 
+    } else { 
+      setShowMentionList(false); 
+    }
   };
 
   const insertMention = (name: string) => {
@@ -273,7 +279,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
-  // --- AUDIO HELPERS ---
+  // ────────────────────────────────────────────────
+  // AUDIO RECORDING
+  // ────────────────────────────────────────────────
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -296,7 +304,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       setIsRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
-    } catch (err) { alert("Mic access denied."); }
+    } catch (err) { 
+      alert("Microphone access denied or not available."); 
+    }
   };
 
   const stopRecording = () => {
@@ -312,7 +322,15 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         const { data: uploadData } = await supabase.storage.from('chat-media').upload(fileName, audioBlob, { contentType: mimeType });
         if (uploadData) {
           const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-          await supabase.from('messages').insert([{ content: 'Voice Note', type: 'audio', media_url: publicUrl, user_id: user.id, author_name: profileName || 'Puritan', room_category: currentRoom, receiver_id: selectedRecipient?.id }]);
+          await supabase.from('messages').insert([{
+            content: 'Voice Note',
+            type: 'audio',
+            media_url: publicUrl,
+            user_id: user.id,
+            author_name: profileName || 'Puritan',
+            room_category: currentRoom,
+            receiver_id: selectedRecipient?.id ?? null
+          }]);
           playSound('send');
         }
         mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
@@ -322,10 +340,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   const renderTextWithMentions = (text: string) => {
     const parts = text.split(/(@\w+(?:\s\w+)?)/g); 
-    return parts.map((part, i) => part.startsWith('@') ? <span key={i} className="text-indigo-600 font-bold bg-indigo-50 px-1 rounded">{part}</span> : part);
+    return parts.map((part, i) => 
+      part.startsWith('@') 
+        ? <span key={i} className="text-indigo-600 font-bold bg-indigo-50 px-1 rounded">{part}</span> 
+        : part
+    );
   };
 
-  const filteredUsers = allUsers.filter(u => u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase()));
+  const filteredUsers = allUsers.filter(u => 
+    u.full_name?.toLowerCase().includes(mentionQuery.toLowerCase())
+  );
 
   return (
     <>
@@ -345,24 +369,41 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
+          {/* Main chat container – uses dvh for proper mobile height */}
           <div 
-            style={{
-              // Key Fix: Translate the whole container up by the actual keyboard height on Android
-              transform: androidKeyboardHeight > 0 ? `translateY(-${androidKeyboardHeight}px)` : 'none',
-              // Key Fix: Ensure bottom positioning is consistent
-              bottom: isKeyboardOpen ? '0px' : '80px'
-            }}
-            className="fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 top-[60px] md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
+            className={`
+              fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 overflow-hidden
+              left-0 right-0 md:left-auto md:right-6 md:top-auto md:bottom-24
+              md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
+              ${isFullPage 
+                ? 'top-0 h-dvh' 
+                : 'top-[60px] h-[calc(100dvh-60px)] md:bottom-24 md:top-auto md:h-[70vh]'
+              }
+            `}
           >
             {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
-               <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
-                  <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Globe size={14} /> Fellowship</button>
-                  <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Flame size={14} /> Altar</button>
-                  <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                    <Mail size={14} /> DMs {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
-                  </button>
-               </div>
+              <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
+                <button 
+                  onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} 
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}
+                >
+                  <Globe size={14} /> Fellowship
+                </button>
+                <button 
+                  onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} 
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}
+                >
+                  <Flame size={14} /> Altar
+                </button>
+                <button 
+                  onClick={() => setCurrentRoom('private')} 
+                  className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}
+                >
+                  <Mail size={14} /> DMs 
+                  {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
+                </button>
+              </div>
             </div>
 
             {/* HEADER */}
@@ -371,28 +412,47 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                 <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">The Forge</span>
                 <h3 className="text-white font-serif italic text-sm">
                   {currentRoom === 'private' && selectedRecipient ? (
-                    <span className="flex items-center gap-2"><button onClick={() => setSelectedRecipient(null)} className="p-1 bg-white/10 rounded-md"><X size={10}/></button>{selectedRecipient.full_name}</span>
+                    <span className="flex items-center gap-2">
+                      <button onClick={() => setSelectedRecipient(null)} className="p-1 bg-white/10 rounded-md">
+                        <X size={10}/>
+                      </button>
+                      {selectedRecipient.full_name}
+                    </span>
                   ) : (
-                    currentRoom === 'general' ? 'The Upper Room' : currentRoom === 'fasting' ? 'Sacred Altar' : 'Sanctuary'
+                    currentRoom === 'general' ? 'The Upper Room' : 
+                    currentRoom === 'fasting' ? 'Sacred Altar' : 'Sanctuary'
                   )}
                 </h3>
               </div>
-              <button onClick={handleClose} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
+              <button onClick={handleClose} className="text-white/40 hover:text-white p-1">
+                <X size={24}/>
+              </button>
             </div>
 
             {/* CONTENT AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
               {currentRoom === 'private' && !selectedRecipient && (
                 <div className="absolute inset-0 bg-white z-20 flex flex-col p-4">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><MessageSquare size={12} /> Recent Conversations</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                    <MessageSquare size={12} /> Recent Conversations
+                  </div>
                   <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
                     {activeConversations.length > 0 ? activeConversations.map(u => (
-                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="relative w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all font-bold text-slate-700 shadow-sm">
-                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">{u.full_name[0]}</div>
-                        {u.full_name} {unreadSenders.includes(u.id) && <span className="ml-auto h-3 w-3 bg-red-500 rounded-full animate-pulse" />}
+                      <button 
+                        key={u.id} 
+                        onClick={() => setSelectedRecipient(u)} 
+                        className="relative w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all font-bold text-slate-700 shadow-sm"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">
+                          {u.full_name?.[0] || '?'}
+                        </div>
+                        {u.full_name}
+                        {unreadSenders.includes(u.id) && <span className="ml-auto h-3 w-3 bg-red-500 rounded-full animate-pulse" />}
                       </button>
                     )) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 font-serif italic">No private messages yet.</div>
+                      <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 font-serif italic">
+                        No private messages yet.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -402,44 +462,88 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                 {currentRoom === 'fasting' && (
                   <div className="bg-orange-50 border-y border-orange-100 p-6 mb-6 -mx-4 text-center">
                     <Quote size={20} className="mx-auto text-orange-200 mb-3" />
-                    <p className="font-serif italic text-orange-900 leading-relaxed text-[15px]">{fastingPreaching}</p>
+                    <p className="font-serif italic text-orange-900 leading-relaxed text-[15px]">
+                      {fastingPreaching}
+                    </p>
                   </div>
                 )}
 
                 {messages.map((msg, i) => {
-                    const isMe = msg.user_id === user.id;
-                    const isEditing = editingId === msg.id;
-                    return (
-                      <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group animate-in fade-in slide-in-from-bottom-1`}>
-                        <div className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0 ${isMe ? 'bg-indigo-600' : 'bg-slate-300'}`}>{msg.author_name?.[0]}</div>
-                          <div className={`relative p-3.5 rounded-2xl shadow-sm text-[15px] ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
-                            {!isMe && <p className="text-[10px] font-black uppercase text-indigo-500 mb-1 tracking-tighter">{msg.author_name}</p>}
-                            {msg.reply_to && (
-                              <div className={`mb-2 p-2 rounded text-[11px] border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
-                                <p className="font-bold">{msg.reply_to.author_name}</p>
-                                <p className="line-clamp-1 opacity-80 italic">{msg.reply_to.content}</p>
-                              </div>
-                            )}
-                            {isEditing ? (
-                               <textarea value={editText} onChange={(e) => setEditText(e.target.value)} onBlur={() => saveEdit(msg.id)} className="w-full text-slate-900 font-bold bg-white rounded p-1 text-[16px] outline-none" autoFocus />
-                            ) : (
-                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-10 w-48" /> : <p className="leading-relaxed whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
-                            )}
-                            <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}><MoreVertical size={14} /></button>
-                            {activeMenuId === msg.id && (
-                              <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border border-slate-100 w-36 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
-                                <button onClick={() => {setReplyingTo(msg); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50"><CornerUpLeft size={12} /> Reply</button>
-                                {!isMe && <button onClick={() => startPrivateChat({id: msg.user_id, full_name: msg.author_name})} className="text-left px-3 py-2.5 text-[11px] text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-bold border-b border-slate-50"><Mail size={12} /> Message</button>}
-                                {isMe && <button onClick={() => {setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50"><Edit2 size={12} /> Edit</button>}
-                                {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2.5 text-[11px] text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold"><Trash2 size={12} /> Delete</button>}
-                              </div>
-                            )}
-                          </div>
+                  const isMe = msg.user_id === user.id;
+                  const isEditing = editingId === msg.id;
+                  return (
+                    <div key={i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group animate-in fade-in slide-in-from-bottom-1`}>
+                      <div className={`flex items-end gap-2 max-w-[85%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0 ${isMe ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                          {msg.author_name?.[0] || '?'}
                         </div>
-                        <span className="text-[8px] text-slate-400 mt-1 mx-9 font-bold uppercase">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <div className={`relative p-3.5 rounded-2xl shadow-sm text-[15px] ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
+                          {!isMe && (
+                            <p className="text-[10px] font-black uppercase text-indigo-500 mb-1 tracking-tighter">
+                              {msg.author_name}
+                            </p>
+                          )}
+                          {msg.reply_to && (
+                            <div className={`mb-2 p-2 rounded text-[11px] border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+                              <p className="font-bold">{msg.reply_to.author_name}</p>
+                              <p className="line-clamp-1 opacity-80 italic">{msg.reply_to.content}</p>
+                            </div>
+                          )}
+                          {isEditing ? (
+                            <textarea 
+                              value={editText} 
+                              onChange={(e) => setEditText(e.target.value)} 
+                              onBlur={() => saveEdit(msg.id)} 
+                              className="w-full text-slate-900 font-bold bg-white rounded p-1 text-[16px] outline-none" 
+                              autoFocus 
+                            />
+                          ) : (
+                            msg.type === 'audio' ? (
+                              <audio controls src={msg.media_url} className="h-10 w-48" />
+                            ) : (
+                              <p className="leading-relaxed whitespace-pre-wrap">
+                                {renderTextWithMentions(msg.content)}
+                              </p>
+                            )
+                          )}
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setActiveMenuId(activeMenuId === msg.id ? null : msg.id); 
+                            }} 
+                            className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                          {activeMenuId === msg.id && (
+                            <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border border-slate-100 w-36 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
+                              <button onClick={() => {setReplyingTo(msg); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50">
+                                <CornerUpLeft size={12} /> Reply
+                              </button>
+                              {!isMe && (
+                                <button onClick={() => startPrivateChat({id: msg.user_id, full_name: msg.author_name})} className="text-left px-3 py-2.5 text-[11px] text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-bold border-b border-slate-50">
+                                  <Mail size={12} /> Message
+                                </button>
+                              )}
+                              {isMe && (
+                                <button onClick={() => {setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50">
+                                  <Edit2 size={12} /> Edit
+                                </button>
+                              )}
+                              {isMe && (
+                                <button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2.5 text-[11px] text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold">
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    );
+                      <span className="text-[8px] text-slate-400 mt-1 mx-9 font-bold uppercase">
+                        {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                  );
                 })}
                 <div ref={messagesEndRef} />
               </div>
@@ -450,7 +554,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
                   {filteredUsers.map(u => (
-                    <button key={u.id} onClick={() => insertMention(u.full_name)} className="w-full text-left px-4 py-3 text-[16px] hover:bg-indigo-50 font-bold border-b border-slate-50 last:border-0 text-slate-700">{u.full_name}</button>
+                    <button 
+                      key={u.id} 
+                      onClick={() => insertMention(u.full_name)} 
+                      className="w-full text-left px-4 py-3 text-[16px] hover:bg-indigo-50 font-bold border-b border-slate-50 last:border-0 text-slate-700"
+                    >
+                      {u.full_name}
+                    </button>
                   ))}
                 </div>
               )}
@@ -464,36 +574,78 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
               {isRecording ? (
                 <div className="flex items-center justify-between bg-rose-50 border border-rose-100 rounded-2xl px-5 py-3 animate-pulse">
-                    <div className="text-rose-600 font-black text-xs uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</div>
-                    <div className="flex gap-2">
-                       <button onClick={() => { setIsRecording(false); if(timerRef.current) clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }} className="p-2 text-slate-400"><Trash2 size={20}/></button>
-                       <button onClick={stopRecording} className="px-4 py-1.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg">Finish</button>
-                    </div>
+                  <div className="text-rose-600 font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> 
+                    REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => { 
+                        setIsRecording(false); 
+                        if(timerRef.current) clearInterval(timerRef.current); 
+                        mediaRecorderRef.current?.stop(); 
+                      }} 
+                      className="p-2 text-slate-400"
+                    >
+                      <Trash2 size={20}/>
+                    </button>
+                    <button 
+                      onClick={stopRecording} 
+                      className="px-4 py-1.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg"
+                    >
+                      Finish
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
-                  <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 h-12 w-12 flex items-center justify-center shrink-0"><Smile size={24} /></button>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
+                    className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-400 h-12 w-12 flex items-center justify-center shrink-0"
+                  >
+                    <Smile size={24} />
+                  </button>
                   <textarea 
                     value={newMessage} 
                     onChange={handleTextChange} 
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
-                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                      }, 180);
+                    }}
                   />
                   {newMessage.trim() ? (
-                    <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 shadow-xl ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+                    <button 
+                      type="submit" 
+                      disabled={isSending} 
+                      className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 shadow-xl ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'}`}
+                    >
                       {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={22} />}
                     </button>
                   ) : (
-                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-12 w-12 flex items-center justify-center shrink-0 shadow-lg"><Mic size={24} /></button>
+                    <button 
+                      type="button" 
+                      onClick={startRecording} 
+                      className="bg-orange-500 text-white p-3 rounded-2xl h-12 w-12 flex items-center justify-center shrink-0 shadow-lg"
+                    >
+                      <Mic size={24} />
+                    </button>
                   )}
                 </form>
               )}
 
               {showEmojiPicker && (
                 <div className="absolute bottom-full left-4 mb-3 z-[100] shadow-2xl rounded-3xl overflow-hidden border border-slate-100 bg-white">
-                  <EmojiPicker onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} emojiStyle={EmojiStyle.NATIVE} width={300} height={350} />
+                  <EmojiPicker 
+                    onEmojiClick={(e) => setNewMessage(p => p + e.emoji)} 
+                    emojiStyle={EmojiStyle.NATIVE} 
+                    width={300} 
+                    height={350} 
+                  />
                 </div>
               )}
             </div>
