@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation'; // Added for redirect
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
@@ -13,7 +13,7 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
-  const router = useRouter(); // Initialize router
+  const router = useRouter();
 
   // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
@@ -29,7 +29,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [fastingPreaching, setFastingPreaching] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
   const [hasNewDM, setHasNewDM] = useState(false);
 
   // --- UI INTERACTION STATE ---
@@ -51,44 +50,60 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- VIEWPORT STABILITY ---
+  // --- ADVANCED KEYBOARD & VIEWPORT FIXES ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
-  // Handle Closing & Redirecting
   const handleClose = () => {
     setIsOpen(false);
-    // If on mobile (screen < 768px), redirect to home
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       router.push('/');
     }
   };
 
-  // Logic to clear the red pulse when entering the DM tab
   useEffect(() => {
     if (currentRoom === 'private') {
       setHasNewDM(false);
     }
   }, [currentRoom]);
 
+  // Combined Viewport Logic for iPhone and Android
   useEffect(() => {
     if (!isOpen) return;
-    const handleVisualViewportResize = () => {
+
+    const handleResize = () => {
       if (window.visualViewport) {
-        const height = window.visualViewport.height;
-        const isKeyboard = height < window.innerHeight * 0.85;
-        setIsKeyboardOpen(isKeyboard);
-        if (isKeyboard) window.scrollTo(0, 0);
+        const vv = window.visualViewport;
+        const isAndroid = /android/i.test(navigator.userAgent);
+        
+        // Difference between total height and visible height
+        const heightDiff = window.innerHeight - vv.height;
+        const keyboardActive = heightDiff > 60;
+        
+        setIsKeyboardOpen(keyboardActive);
+
+        if (isAndroid) {
+          // On Android, we explicitly track the offset to shift the UI container
+          setAndroidKeyboardHeight(keyboardActive ? heightDiff : 0);
+        }
+        
+        // Auto-scroll to bottom when keyboard pops up
+        if (keyboardActive) {
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }
       }
     };
-    window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
+
+    window.visualViewport?.addEventListener('resize', handleResize);
     document.body.style.overflow = 'hidden';
     return () => {
-      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
       document.body.style.overflow = '';
     };
   }, [isOpen]);
 
-  // Initial Sound Setup
   useEffect(() => {
     sendAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
     receiveAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
@@ -178,7 +193,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
-  // --- HELPER: Get Active DM Conversations ---
+  // --- ACTIVE DM LIST ---
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -200,7 +215,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
-  // --- ACTIONS ---
+  // --- CORE ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -258,7 +273,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
-  // --- UNIVERSAL AUDIO HELPERS ---
+  // --- AUDIO HELPERS ---
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -272,21 +287,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = getSupportedMimeType();
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-      
       mediaRecorder.start();
       setIsRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
-    } catch (err) { 
-      console.error(err);
-      alert("Mic access denied or not supported on this browser."); 
-    }
+    } catch (err) { alert("Mic access denied."); }
   };
 
   const stopRecording = () => {
@@ -295,34 +305,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       mediaRecorderRef.current.stop();
       setIsRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
-
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const extension = mimeType.includes('mp4') ? 'm4a' : 'webm';
         const fileName = `${user.id}_${Date.now()}.${extension}`;
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('chat-media')
-          .upload(fileName, audioBlob, {
-            contentType: mimeType,
-            cacheControl: '3600'
-          });
-
-        if (uploadError) return;
-
-        const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-        
-        await supabase.from('messages').insert([{ 
-          content: 'Voice Note', 
-          type: 'audio', 
-          media_url: publicUrl, 
-          user_id: user.id, 
-          author_name: profileName || 'Puritan', 
-          room_category: currentRoom, 
-          receiver_id: selectedRecipient?.id 
-        }]);
-        
-        playSound('send');
+        const { data: uploadData } = await supabase.storage.from('chat-media').upload(fileName, audioBlob, { contentType: mimeType });
+        if (uploadData) {
+          const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
+          await supabase.from('messages').insert([{ content: 'Voice Note', type: 'audio', media_url: publicUrl, user_id: user.id, author_name: profileName || 'Puritan', room_category: currentRoom, receiver_id: selectedRecipient?.id }]);
+          playSound('send');
+        }
         mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
       };
     }
@@ -337,9 +329,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   return (
     <>
-      {/* Modified to 'hidden md:flex'. 
-        The icon will now only appear on Desktop (medium screens and up) 
-      */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)} 
@@ -347,9 +336,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             ${hasNewDM ? 'bg-red-600 animate-pulse-fast' : 'bg-indigo-600 animate-pulse-slow'}`}
         >
           <MessageCircle size={24} fill="currentColor" />
-          {hasNewDM && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 rounded-full border-2 border-white" />
-          )}
+          {hasNewDM && <span className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 rounded-full border-2 border-white" />}
           <span className={`absolute inset-0 rounded-full -z-10 animate-ping opacity-25 ${hasNewDM ? 'bg-red-400' : 'bg-indigo-400'}`} />
         </button>
       )}
@@ -358,39 +345,33 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
-          <div className={`
-            fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
-            left-0 right-0 top-[60px] ${isKeyboardOpen ? 'bottom-0' : 'bottom-[80px]'}
-            md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
-            overflow-hidden
-          `}>
-            
-            {/* 1. TABS */}
+          <div 
+            style={{
+              // Key Fix: Translate the whole container up by the actual keyboard height on Android
+              transform: androidKeyboardHeight > 0 ? `translateY(-${androidKeyboardHeight}px)` : 'none',
+              // Key Fix: Ensure bottom positioning is consistent
+              bottom: isKeyboardOpen ? '0px' : '80px'
+            }}
+            className="fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 top-[60px] md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
+          >
+            {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
                <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
-                  <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                    <Globe size={14} /> Fellowship
-                  </button>
-                  <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                    <Flame size={14} /> Altar
-                  </button>
+                  <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Globe size={14} /> Fellowship</button>
+                  <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Flame size={14} /> Altar</button>
                   <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                    <Mail size={14} /> DMs
-                    {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
+                    <Mail size={14} /> DMs {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
                   </button>
                </div>
             </div>
 
-            {/* 2. HEADER */}
+            {/* HEADER */}
             <div className={`px-5 py-3 flex items-center justify-between border-b border-white/5 shrink-0 transition-colors ${currentRoom === 'fasting' ? 'bg-orange-950' : currentRoom === 'private' ? 'bg-emerald-950' : 'bg-slate-900'}`}>
               <div className="flex flex-col">
                 <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">The Forge</span>
                 <h3 className="text-white font-serif italic text-sm">
                   {currentRoom === 'private' && selectedRecipient ? (
-                    <span className="flex items-center gap-2">
-                      <button onClick={() => setSelectedRecipient(null)} className="p-1 bg-white/10 rounded-md"><X size={10}/></button>
-                      {selectedRecipient.full_name}
-                    </span>
+                    <span className="flex items-center gap-2"><button onClick={() => setSelectedRecipient(null)} className="p-1 bg-white/10 rounded-md"><X size={10}/></button>{selectedRecipient.full_name}</span>
                   ) : (
                     currentRoom === 'general' ? 'The Upper Room' : currentRoom === 'fasting' ? 'Sacred Altar' : 'Sanctuary'
                   )}
@@ -399,30 +380,19 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               <button onClick={handleClose} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
             </div>
 
-            {/* 3. CONTENT AREA */}
+            {/* CONTENT AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
-              
               {currentRoom === 'private' && !selectedRecipient && (
                 <div className="absolute inset-0 bg-white z-20 flex flex-col p-4">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <MessageSquare size={12} /> Recent Conversations
-                  </div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"><MessageSquare size={12} /> Recent Conversations</div>
                   <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                    {activeConversations.length > 0 ? (
-                      activeConversations.map(u => (
-                        <button key={u.id} onClick={() => setSelectedRecipient(u)} className="relative w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all font-bold text-slate-700 shadow-sm">
-                          <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">{u.full_name[0]}</div>
-                          {u.full_name}
-                          {unreadSenders.includes(u.id) && <span className="ml-auto h-3 w-3 bg-red-500 rounded-full animate-pulse" />}
-                        </button>
-                      ))
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-8">
-                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4">
-                          <Mail size={32} />
-                        </div>
-                        <p className="text-slate-400 font-serif italic">No private messages yet. Use the menu on a message to start a conversation.</p>
-                      </div>
+                    {activeConversations.length > 0 ? activeConversations.map(u => (
+                      <button key={u.id} onClick={() => setSelectedRecipient(u)} className="relative w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-slate-100 hover:border-emerald-500 transition-all font-bold text-slate-700 shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center font-black">{u.full_name[0]}</div>
+                        {u.full_name} {unreadSenders.includes(u.id) && <span className="ml-auto h-3 w-3 bg-red-500 rounded-full animate-pulse" />}
+                      </button>
+                    )) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400 font-serif italic">No private messages yet.</div>
                     )}
                   </div>
                 </div>
@@ -445,37 +415,29 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                           <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0 ${isMe ? 'bg-indigo-600' : 'bg-slate-300'}`}>{msg.author_name?.[0]}</div>
                           <div className={`relative p-3.5 rounded-2xl shadow-sm text-[15px] ${isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none'}`}>
                             {!isMe && <p className="text-[10px] font-black uppercase text-indigo-500 mb-1 tracking-tighter">{msg.author_name}</p>}
-                            
                             {msg.reply_to && (
                               <div className={`mb-2 p-2 rounded text-[11px] border-l-2 ${isMe ? 'bg-indigo-700/50 border-indigo-300 text-indigo-100' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
                                 <p className="font-bold">{msg.reply_to.author_name}</p>
                                 <p className="line-clamp-1 opacity-80 italic">{msg.reply_to.content}</p>
                               </div>
                             )}
-
                             {isEditing ? (
                                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} onBlur={() => saveEdit(msg.id)} className="w-full text-slate-900 font-bold bg-white rounded p-1 text-[16px] outline-none" autoFocus />
                             ) : (
-                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-10 w-48 md:w-56" /> : <p className="leading-relaxed whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
+                               msg.type === 'audio' ? <audio controls src={msg.media_url} className="h-10 w-48" /> : <p className="leading-relaxed whitespace-pre-wrap">{renderTextWithMentions(msg.content)}</p>
                             )}
-                            
                             <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg.id ? null : msg.id); }} className={`absolute top-1 ${isMe ? '-left-6' : '-right-6'} text-slate-300`}><MoreVertical size={14} /></button>
-                            
                             {activeMenuId === msg.id && (
                               <div className={`absolute top-6 z-50 bg-white shadow-xl rounded-xl border border-slate-100 w-36 flex flex-col overflow-hidden ${isMe ? 'left-0' : 'right-0'}`}>
                                 <button onClick={() => {setReplyingTo(msg); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50"><CornerUpLeft size={12} /> Reply</button>
-                                {!isMe && (
-                                  <button onClick={() => startPrivateChat({id: msg.user_id, full_name: msg.author_name})} className="text-left px-3 py-2.5 text-[11px] text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-bold border-b border-slate-50">
-                                    <Mail size={12} /> Message
-                                  </button>
-                                )}
+                                {!isMe && <button onClick={() => startPrivateChat({id: msg.user_id, full_name: msg.author_name})} className="text-left px-3 py-2.5 text-[11px] text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 font-bold border-b border-slate-50"><Mail size={12} /> Message</button>}
                                 {isMe && <button onClick={() => {setEditingId(msg.id); setEditText(msg.content); setActiveMenuId(null);}} className="text-left px-3 py-2.5 text-[11px] text-slate-600 hover:bg-slate-50 flex items-center gap-2 font-bold border-b border-slate-50"><Edit2 size={12} /> Edit</button>}
                                 {isMe && <button onClick={() => deleteMessage(msg.id)} className="text-left px-3 py-2.5 text-[11px] text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold"><Trash2 size={12} /> Delete</button>}
                               </div>
                             )}
                           </div>
                         </div>
-                        <span className="text-[8px] text-slate-400 mt-1 mx-9 font-bold uppercase tracking-tight">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <span className="text-[8px] text-slate-400 mt-1 mx-9 font-bold uppercase">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                       </div>
                     );
                 })}
@@ -483,7 +445,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               </div>
             </div>
 
-            {/* 4. INPUT AREA */}
+            {/* INPUT AREA */}
             <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
@@ -502,9 +464,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
               {isRecording ? (
                 <div className="flex items-center justify-between bg-rose-50 border border-rose-100 rounded-2xl px-5 py-3 animate-pulse">
-                    <div className="text-rose-600 font-black text-xs flex items-center gap-2 uppercase tracking-widest">
-                       <div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
-                    </div>
+                    <div className="text-rose-600 font-black text-xs uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 bg-rose-600 rounded-full animate-ping"/> REC 00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}</div>
                     <div className="flex gap-2">
                        <button onClick={() => { setIsRecording(false); if(timerRef.current) clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }} className="p-2 text-slate-400"><Trash2 size={20}/></button>
                        <button onClick={stopRecording} className="px-4 py-1.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg">Finish</button>
@@ -522,11 +482,11 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
-                    <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} shadow-xl`}>
+                    <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 shadow-xl ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
                       {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={22} />}
                     </button>
                   ) : (
-                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-12 w-12 flex items-center justify-center shrink-0 shadow-lg active:scale-90"><Mic size={24} /></button>
+                    <button type="button" onClick={startRecording} className="bg-orange-500 text-white p-3 rounded-2xl h-12 w-12 flex items-center justify-center shrink-0 shadow-lg"><Mic size={24} /></button>
                   )}
                 </form>
               )}
@@ -543,31 +503,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
-
-        /* Idle State Pulse */
-        @keyframes pulse-slow {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
-          50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 3s infinite ease-in-out;
-        }
-
-        /* Urgent Alert Pulse */
-        @keyframes pulse-fast {
-          0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-          50% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(220, 38, 38, 0); }
-        }
-        .animate-pulse-fast {
-          animation: pulse-fast 1.5s infinite ease-in-out;
-        }
-
-        audio::-webkit-media-controls-enclosure {
-            background-color: transparent !important;
-        }
+        @keyframes pulse-slow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .animate-pulse-slow { animation: pulse-slow 3s infinite ease-in-out; }
+        @keyframes pulse-fast { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .animate-pulse-fast { animation: pulse-fast 1.5s infinite ease-in-out; }
       `}} />
     </>
   );
