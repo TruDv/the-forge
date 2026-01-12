@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation'; // Added for redirect
 import { supabase } from '@/lib/supabase';
 import { 
   X, Send, MessageCircle, Users, Loader2, Sparkles, Smile, 
@@ -13,7 +13,7 @@ import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 type RoomType = 'general' | 'fasting' | 'private';
 
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
-  const router = useRouter();
+  const router = useRouter(); // Initialize router
 
   // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
@@ -51,38 +51,44 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- ANDROID KEYBOARD FIX ---
-  const [androidOffset, setAndroidOffset] = useState(0);
+  // --- VIEWPORT STABILITY ---
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
+  // Handle Closing & Redirecting
   const handleClose = () => {
     setIsOpen(false);
+    // If on mobile (screen < 768px), redirect to home
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       router.push('/');
     }
   };
 
+  // Logic to clear the red pulse when entering the DM tab
+  useEffect(() => {
+    if (currentRoom === 'private') {
+      setHasNewDM(false);
+    }
+  }, [currentRoom]);
+
   useEffect(() => {
     if (!isOpen) return;
-
-    const handleResize = () => {
-      const isAndroid = /android/i.test(navigator.userAgent);
-      if (isAndroid && window.visualViewport) {
-        const offset = window.innerHeight - window.visualViewport.height;
-        setAndroidOffset(offset > 60 ? offset : 0);
-        if (offset > 60) {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }
+    const handleVisualViewportResize = () => {
+      if (window.visualViewport) {
+        const height = window.visualViewport.height;
+        const isKeyboard = height < window.innerHeight * 0.85;
+        setIsKeyboardOpen(isKeyboard);
+        if (isKeyboard) window.scrollTo(0, 0);
       }
     };
-
-    window.visualViewport?.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleVisualViewportResize);
     document.body.style.overflow = 'hidden';
     return () => {
-      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('resize', handleVisualViewportResize);
       document.body.style.overflow = '';
     };
   }, [isOpen]);
 
+  // Initial Sound Setup
   useEffect(() => {
     sendAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
     receiveAudioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
@@ -93,6 +99,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
+  // --- DATA FETCHING & REALTIME ---
   useEffect(() => {
     if (!isOpen) return;
 
@@ -171,6 +178,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
+  // --- HELPER: Get Active DM Conversations ---
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -192,6 +200,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
+  // --- ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -249,6 +258,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
+  // --- UNIVERSAL AUDIO HELPERS ---
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -327,6 +337,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
   return (
     <>
+      {/* Modified to 'hidden md:flex'. 
+        The icon will now only appear on Desktop (medium screens and up) 
+      */}
       {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)} 
@@ -345,18 +358,14 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
-          <div 
-            style={{ 
-              transform: androidOffset > 0 ? `translateY(-${androidOffset}px)` : 'none'
-            }}
-            className={`
-              fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200
-              left-0 right-0 top-[60px] bottom-0
-              md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
-              overflow-hidden
-            `}
-          >
+          <div className={`
+            fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-300 ease-out
+            left-0 right-0 top-[60px] ${isKeyboardOpen ? 'bottom-0' : 'bottom-[80px]'}
+            md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
+            overflow-hidden
+          `}>
             
+            {/* 1. TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
                <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
                   <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
@@ -372,6 +381,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                </div>
             </div>
 
+            {/* 2. HEADER */}
             <div className={`px-5 py-3 flex items-center justify-between border-b border-white/5 shrink-0 transition-colors ${currentRoom === 'fasting' ? 'bg-orange-950' : currentRoom === 'private' ? 'bg-emerald-950' : 'bg-slate-900'}`}>
               <div className="flex flex-col">
                 <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">The Forge</span>
@@ -389,7 +399,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               <button onClick={handleClose} className="text-white/40 hover:text-white p-1"><X size={24}/></button>
             </div>
 
+            {/* 3. CONTENT AREA */}
             <div className="flex-1 relative flex flex-col min-h-0 bg-[#f8f9fa] overflow-hidden">
+              
               {currentRoom === 'private' && !selectedRecipient && (
                 <div className="absolute inset-0 bg-white z-20 flex flex-col p-4">
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -471,7 +483,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
               </div>
             </div>
 
-            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30 pb-[max(env(safe-area-inset-bottom),16px)]">
+            {/* 4. INPUT AREA */}
+            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
                   {filteredUsers.map(u => (
@@ -506,6 +519,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
+                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 transition-all active:scale-90 ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'} shadow-xl`}>
@@ -532,27 +546,28 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         textarea { font-size: 16px !important; }
-        
-        /* iPhone specific keyboard fix: let iOS handle it naturally */
-        @supports (-webkit-touch-callout: none) {
-          .fixed {
-            position: fixed;
-          }
-        }
 
+        /* Idle State Pulse */
         @keyframes pulse-slow {
           0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
           50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
         }
-        .animate-pulse-slow { animation: pulse-slow 3s infinite ease-in-out; }
+        .animate-pulse-slow {
+          animation: pulse-slow 3s infinite ease-in-out;
+        }
 
+        /* Urgent Alert Pulse */
         @keyframes pulse-fast {
           0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
           50% { transform: scale(1.1); box-shadow: 0 0 0 15px rgba(220, 38, 38, 0); }
         }
-        .animate-pulse-fast { animation: pulse-fast 1.5s infinite ease-in-out; }
+        .animate-pulse-fast {
+          animation: pulse-fast 1.5s infinite ease-in-out;
+        }
 
-        audio::-webkit-media-controls-enclosure { background-color: transparent !important; }
+        audio::-webkit-media-controls-enclosure {
+            background-color: transparent !important;
+        }
       `}} />
     </>
   );
