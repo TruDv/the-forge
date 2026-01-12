@@ -6,16 +6,15 @@ import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 import { 
-  Menu, X, Bell, Music, Play, Pause, 
+  X, Bell, Music, Play, Pause, 
   SkipForward, SkipBack, 
-  Volume2, Loader2, Signal, ListMusic,
-  Repeat, Repeat1, BookOpen, ScrollText 
+  Loader2, Signal, ListMusic,
+  Repeat, Repeat1, BookOpen 
 } from 'lucide-react';
 
 export default function Navbar() {
   const pathname = usePathname();
   const [initials, setInitials] = useState('US');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // --- NOTIFICATION STATE ---
   const [notifCount, setNotifCount] = useState(0);
@@ -273,7 +272,7 @@ export default function Navbar() {
           </div>
         </Link>
         
-        {/* DESKTOP NAV */}
+        {/* DESKTOP NAV (Visible on Large Screens) */}
         <div className="hidden lg:flex space-x-8 font-medium text-sm ml-8">
           {navLinks.map((link) => (
             <Link 
@@ -453,21 +452,9 @@ export default function Navbar() {
             {initials}
           </Link>
 
-          <button className="hidden md:block p-1 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          {/* HAMBURGER MENU REMOVED ENTIRELY */}
         </div>
       </div>
-
-      {isMobileMenuOpen && (
-        <div className="hidden lg:flex border-t border-slate-100 bg-white absolute top-16 left-0 w-full shadow-lg py-4 px-6 flex flex-col gap-4">
-          {navLinks.map((link) => (
-            <Link key={link.name} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className={`text-sm font-bold py-2 ${pathname === link.href ? 'text-indigo-600' : 'text-slate-600 hover:text-indigo-600'}`}>
-              {link.name}
-            </Link>
-          ))}
-        </div>
-      )}
     </nav>
   );
 }
