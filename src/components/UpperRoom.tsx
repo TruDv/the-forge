@@ -50,9 +50,9 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- ANDROID SPECIFIC FIX STATE ---
-  const [dynamicHeight, setDynamicHeight] = useState('100dvh');
-  const [dynamicTop, setDynamicTop] = useState('0px');
+  // --- ADVANCED KEYBOARD & VIEWPORT FIXES ---
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -67,43 +67,39 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   }, [currentRoom]);
 
-  // --- TARGETED VIEWPORT LOGIC ---
+  // Combined Viewport Logic for iPhone and Android
   useEffect(() => {
     if (!isOpen) return;
 
-    // Strict Android Check
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    
-    // For iPhone/Desktop, we do NOTHING. We keep the default CSS behavior.
-    if (!isAndroid) {
-        setDynamicHeight('100%');
-        setDynamicTop('0px');
-        document.body.style.overflow = 'hidden';
-        return;
-    }
-
-    // For Android ONLY: Use Visual Viewport to fight the grey space
-    const handleAndroidResize = () => {
+    const handleResize = () => {
       if (window.visualViewport) {
         const vv = window.visualViewport;
-        setDynamicHeight(`${vv.height}px`);
-        setDynamicTop(`${vv.offsetTop}px`);
+        const isAndroid = /android/i.test(navigator.userAgent);
         
-        // Auto-scroll on keyboard open
-        if (vv.height < window.innerHeight * 0.8) {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        // Difference between total height and visible height
+        const heightDiff = window.innerHeight - vv.height;
+        const keyboardActive = heightDiff > 60;
+        
+        setIsKeyboardOpen(keyboardActive);
+
+        if (isAndroid) {
+          // On Android, we explicitly track the offset to shift the UI container
+          setAndroidKeyboardHeight(keyboardActive ? heightDiff : 0);
+        }
+        
+        // Auto-scroll to bottom when keyboard pops up
+        if (keyboardActive) {
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
         }
       }
     };
 
-    window.visualViewport?.addEventListener('resize', handleAndroidResize);
-    window.visualViewport?.addEventListener('scroll', handleAndroidResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
     document.body.style.overflow = 'hidden';
-    handleAndroidResize();
-
     return () => {
-      window.visualViewport?.removeEventListener('resize', handleAndroidResize);
-      window.visualViewport?.removeEventListener('scroll', handleAndroidResize);
+      window.visualViewport?.removeEventListener('resize', handleResize);
       document.body.style.overflow = '';
     };
   }, [isOpen]);
@@ -197,6 +193,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
+  // --- ACTIVE DM LIST ---
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -218,7 +215,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
-  // --- ACTIONS ---
+  // --- CORE ACTIONS ---
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -349,12 +346,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
           <div 
-            style={{ 
-              height: dynamicHeight,
-              top: dynamicTop, 
-              position: 'fixed'
+            style={{
+              // Key Fix: Translate the whole container up by the actual keyboard height on Android
+              transform: androidKeyboardHeight > 0 ? `translateY(-${androidKeyboardHeight}px)` : 'none',
+              // Key Fix: Ensure bottom positioning is consistent
+              bottom: isKeyboardOpen ? '0px' : '80px'
             }}
-            className="z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 md:left-auto md:right-6 md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
+            className="fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 top-[60px] md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
           >
             {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
@@ -481,6 +479,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
+                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 shadow-xl ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
