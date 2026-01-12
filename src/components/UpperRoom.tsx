@@ -50,9 +50,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- THE WORKING VIEWPORT LOGIC ---
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+  // --- MOBILE KEYBOARD HEIGHT LOGIC ---
+  const [dynamicHeight, setDynamicHeight] = useState('100%');
 
   const handleClose = () => {
     setIsOpen(false);
@@ -62,30 +61,27 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   };
 
   useEffect(() => {
-    if (currentRoom === 'private') {
-      setHasNewDM(false);
-    }
+    if (currentRoom === 'private') setHasNewDM(false);
   }, [currentRoom]);
 
-  // Combined Viewport Logic - Keeping your specific iPhone CSS approach
+  // Unified Viewport Fix for Android & iPhone
   useEffect(() => {
     if (!isOpen) return;
 
     const handleResize = () => {
       if (window.visualViewport) {
         const vv = window.visualViewport;
-        const isAndroid = /android/i.test(navigator.userAgent);
         
-        const heightDiff = window.innerHeight - vv.height;
-        const keyboardActive = heightDiff > 60;
-        
-        setIsKeyboardOpen(keyboardActive);
-
-        if (isAndroid) {
-          setAndroidKeyboardHeight(keyboardActive ? heightDiff : 0);
+        if (window.innerWidth < 768) {
+          // On mobile, the height is exactly the visual viewport height
+          setDynamicHeight(`${vv.height}px`);
+        } else {
+          // On desktop, keep your original UI design
+          setDynamicHeight('70vh');
         }
-        
-        if (keyboardActive) {
+
+        // When keyboard opens, auto-scroll to latest message
+        if (vv.height < window.innerHeight - 100) {
           setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
           }, 100);
@@ -94,9 +90,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     };
 
     window.visualViewport?.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('scroll', handleResize);
+    handleResize(); // Initial call
+
     document.body.style.overflow = 'hidden';
     return () => {
       window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('scroll', handleResize);
       document.body.style.overflow = '';
     };
   }, [isOpen]);
@@ -270,7 +270,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
-  // --- AUDIO HELPERS ---
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -344,20 +343,22 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
           <div 
             style={{
-              transform: androidKeyboardHeight > 0 ? `translateY(-${androidKeyboardHeight}px)` : 'none',
-              bottom: isKeyboardOpen ? '0px' : '80px' // THIS IS THE SPECIFIC IPHONE FIX YOU SHARED
+              height: dynamicHeight,
+              bottom: 0,
+              top: 'auto',
+              position: 'fixed'
             }}
-            className="fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 top-[60px] md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
+            className="z-50 bg-white flex flex-col shadow-2xl transition-[height] duration-150 left-0 right-0 md:left-auto md:right-6 md:bottom-24 md:w-[420px] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
           >
             {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
-               <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
-                  <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Globe size={14} /> Fellowship</button>
-                  <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Flame size={14} /> Altar</button>
-                  <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
-                    <Mail size={14} /> DMs {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
-                  </button>
-               </div>
+                <div className="flex bg-white/5 p-1 rounded-2xl gap-1">
+                   <button onClick={() => {setCurrentRoom('general'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'general' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Globe size={14} /> Fellowship</button>
+                   <button onClick={() => {setCurrentRoom('fasting'); setSelectedRecipient(null);}} className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'fasting' ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}><Flame size={14} /> Altar</button>
+                   <button onClick={() => setCurrentRoom('private')} className={`relative flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentRoom === 'private' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/5'}`}>
+                     <Mail size={14} /> DMs {hasNewDM && <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse border border-white" />}
+                   </button>
+                </div>
             </div>
 
             {/* HEADER */}
@@ -441,7 +442,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             </div>
 
             {/* INPUT AREA */}
-            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
+            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30 pb-[env(safe-area-inset-bottom,1rem)]">
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
                   {filteredUsers.map(u => (
@@ -474,7 +475,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     placeholder="Write to the Forge..."
                     className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
                     rows={1}
-                    onFocus={() => { if(typeof window !== 'undefined' && window.innerWidth < 768) setIsKeyboardOpen(true); }}
                   />
                   {newMessage.trim() ? (
                     <button type="submit" disabled={isSending} className={`p-3 rounded-2xl text-white h-12 w-12 flex items-center justify-center shrink-0 shadow-xl ${currentRoom === 'fasting' ? 'bg-orange-600' : currentRoom === 'private' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
