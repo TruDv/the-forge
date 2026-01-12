@@ -50,7 +50,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- ADVANCED KEYBOARD & VIEWPORT FIXES ---
+  // --- THE WORKING VIEWPORT LOGIC ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
@@ -67,7 +67,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   }, [currentRoom]);
 
-  // Combined Viewport Logic for iPhone and Android
+  // Combined Viewport Logic - Keeping your specific iPhone CSS approach
   useEffect(() => {
     if (!isOpen) return;
 
@@ -76,18 +76,15 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         const vv = window.visualViewport;
         const isAndroid = /android/i.test(navigator.userAgent);
         
-        // Difference between total height and visible height
         const heightDiff = window.innerHeight - vv.height;
         const keyboardActive = heightDiff > 60;
         
         setIsKeyboardOpen(keyboardActive);
 
         if (isAndroid) {
-          // On Android, we explicitly track the offset to shift the UI container
           setAndroidKeyboardHeight(keyboardActive ? heightDiff : 0);
         }
         
-        // Auto-scroll to bottom when keyboard pops up
         if (keyboardActive) {
           setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -347,10 +344,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
 
           <div 
             style={{
-              // Key Fix: Translate the whole container up by the actual keyboard height on Android
               transform: androidKeyboardHeight > 0 ? `translateY(-${androidKeyboardHeight}px)` : 'none',
-              // Key Fix: Ensure bottom positioning is consistent
-              bottom: isKeyboardOpen ? '0px' : '80px'
+              bottom: isKeyboardOpen ? '0px' : '80px' // THIS IS THE SPECIFIC IPHONE FIX YOU SHARED
             }}
             className="fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 left-0 right-0 top-[60px] md:left-auto md:right-6 md:top-auto md:bottom-24 md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200 overflow-hidden"
           >
