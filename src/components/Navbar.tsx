@@ -67,13 +67,14 @@ export default function Navbar() {
         
         w.OneSignal.push(function() {
           w.OneSignal.init({
-            appId: "e2ae7af9-258c-4cbe-8397-99a8cc438376", 
+            appId: "e2ae7af9-258c-4cbe-8397-99a8cc438376", // <--- I ADDED YOUR REAL ID HERE
             safari_web_id: "web.onesignal.auto.xxxxx", 
             notifyButton: { enable: true },
             allowLocalhostAsSecureOrigin: true,
           });
 
           // 3. CRITICAL: SAVE ID TO SUPABASE
+          // This listens for when a user accepts notifications
           w.OneSignal.on('subscriptionChange', function (isSubscribed: boolean) {
             if (isSubscribed && session?.user) {
               w.OneSignal.getUserId(async function(userId: string) {
@@ -215,18 +216,22 @@ export default function Navbar() {
 
   // --- NOTIFICATION TRIGGER LOGIC ---
   const triggerNotification = (message: string = "New Activity", type: 'info' | 'alert' = 'info') => {
+    // 1. Increment Badge
     setNotifCount(prev => prev + 1);
     setIsAnimating(true);
     
+    // 2. Play Sound
     if (notificationAudioRef.current) {
         notificationAudioRef.current.currentTime = 0; 
         notificationAudioRef.current.play().catch(e => console.log("Audio play blocked", e));
     }
 
+    // 3. Show Visual Toast (The Popup)
     setToast({ visible: true, message, type });
 
+    // 4. Reset Animations
     setTimeout(() => setIsAnimating(false), 1000);
-    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 5000); 
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 5000); // Hide after 5s
   };
 
   // --- MUSIC HANDLERS ---
@@ -336,7 +341,7 @@ export default function Navbar() {
 
   return (
     <>
-      {/* 1. VISUAL TOAST NOTIFICATION */}
+      {/* 1. VISUAL TOAST NOTIFICATION (Appears at top center) */}
       <div 
         className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] transition-all duration-500 ease-in-out ${toast.visible ? 'translate-y-0 opacity-100' : '-translate-y-20 opacity-0 pointer-events-none'}`}
       >
@@ -347,7 +352,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* 2. iOS INSTALL PROMPT */}
+      {/* 2. iOS INSTALL PROMPT (Bottom Sheet) */}
       {showInstallPrompt && (
         <div className="fixed bottom-0 left-0 right-0 z-[200] p-4 animate-in slide-in-from-bottom duration-500">
           <div className="bg-white rounded-2xl shadow-2xl p-5 border border-slate-200 relative max-w-md mx-auto">
@@ -380,7 +385,7 @@ export default function Navbar() {
             </div>
           </Link>
           
-          {/* DESKTOP NAV */}
+          {/* DESKTOP NAV (Visible on Large Screens Only) */}
           <div className="hidden lg:flex space-x-8 font-medium text-sm ml-8">
             {navLinks.map((link) => (
               <Link 
@@ -554,56 +559,12 @@ export default function Navbar() {
               )}
             </button>
 
-{/* --- DEBUG BUTTON --- */}
-<button
-    onClick={async () => {
-        const w = window as any;
-        const permission = Notification.permission;
-        const isLoaded = !!w.OneSignal;
-        
-        // 1. Alert the Status
-        alert(`DIAGNOSTIC REPORT:\n
-        - OneSignal Loaded: ${isLoaded ? "YES" : "NO (Check Script)"}
-        - Permission Status: ${permission}
-        - Protocol: ${window.location.protocol} (Must be https or localhost)
-        `);
-
-        if (!isLoaded) return;
-
-        // 2. If already granted, force save the ID
-        if (permission === 'granted') {
-             w.OneSignal.push(async () => {
-                 const userId = await w.OneSignal.getUserId();
-                 alert(`You are ALREADY subscribed!\nUser ID: ${userId}`);
-                 if (userId) {
-                     // Force save to Supabase
-                     const { data: { session } } = await supabase.auth.getSession();
-                     if (session) {
-                         await supabase.from('profiles').update({ onesignal_id: userId }).eq('id', session.user.id);
-                         alert("ID Saved to Database!");
-                     }
-                 }
-             });
-        } 
-        // 3. If not granted, try to show prompt
-        else {
-            w.OneSignal.push(() => {
-                w.OneSignal.showNativePrompt(); // The Slide Prompt
-                w.OneSignal.registerForPushNotifications(); // The Browser Prompt
-                alert("Prompt requested...");
-            });
-        }
-    }}
-    className="bg-red-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full hover:bg-red-700 transition-colors ml-1"
->
-    TEST NOTIFICATIONS
-</button>
-
             {/* PROFILE */}
             <Link href="/profile" className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-900 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white hover:scale-105 transition-transform cursor-pointer">
               {initials}
             </Link>
 
+            {/* HAMBURGER MENU COMPLETELY REMOVED */}
           </div>
         </div>
       </nav>
