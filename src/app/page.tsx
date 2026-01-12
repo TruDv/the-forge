@@ -707,7 +707,7 @@ export default function Home() {
     {/* THE BIBLE LINK ICON (Always visible but glows on hover) */}
     {/* Replace your existing Link in the Altar Widget scripture box with this */}
 <Link 
-  href={`/bible?location=${encodeURIComponent(todayFocus?.book || 'Psalm')} ${todayFocus?.day_number || '46'}`}
+  href={`/bible?location=${encodeURIComponent(todayFocus?.book || 'Jeremiah')} ${todayFocus?.day_number || '46'}`}
   className="flex items-center gap-1.5 bg-slate-900 text-white px-2.5 py-1.5 rounded-xl hover:bg-orange-600 transition-all shadow-md group/btn"
 >
   <BookOpen size={12} className="group-hover/btn:scale-110 transition-transform" />

@@ -24,7 +24,7 @@ export default function FastingPage() {
   const fastDays = Array.from({ length: 21 }, (_, i) => i + 1);
 
   const getWeeklyTopic = (day: number) => {
-    if (day <= 7) return { title: "Week 1: Consecration", focus: "Pure Hearts" };
+    if (day <= 7) return { title: "Week 1: Consecration", focus: "Knowing God" };
     if (day <= 14) return { title: "Week 2: Breakthrough", focus: "Spiritual Warfare" };
     return { title: "Week 3: Empowerment", focus: "Spiritual Clarity" };
   };
@@ -413,7 +413,7 @@ export default function FastingPage() {
           <Quote className="absolute top-4 right-8 text-slate-50 w-24 h-24 -z-0" />
           {/* High contrast text for the devotional body */}
           <p className="relative z-10 text-slate-800 leading-relaxed text-xl md:text-2xl font-serif">
-            {dailyFocus?.devotional ? `"${dailyFocus.devotional}"` : `Take time today to meditate on the theme of ${currentTopic.focus.toLowerCase()}.`}
+            {dailyFocus?.devotional ? `"${dailyFocus.devotional}"` : `Take time today to meditate on the theme of ${currentTopic.focus.toUpperCase()}.`}
           </p>
         </div>
       </div>
