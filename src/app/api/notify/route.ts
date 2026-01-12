@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 // --- CONFIGURATION ---
-const ONESIGNAL_APP_ID = "e2ae7af9-258c-4cbe-8397-99a8cc438376"; // Your App ID
-const ONESIGNAL_REST_API_KEY = "os_v2_app_4kxhv6jfrrgl5a4xtgumyq4do2a6ttlb6nxe2hujupdz4pls3xhufmvrzjdst4s54nag4u72sczezsdwhz7rvgnq5csdz6bb6yt7kvy"; // <--- NEED THIS FROM DASHBOARD
+const ONESIGNAL_APP_ID = "e2ae7af9-258c-4cbe-8397-99a8cc438376"; 
+// SAFETY FIX: Read from environment variable
+const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY; 
 
-// Admin Supabase (To fetch user IDs)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,6 +13,11 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   const { message, author_name, exclude_id } = await req.json();
+
+  // Safety check
+  if (!ONESIGNAL_REST_API_KEY) {
+    return NextResponse.json({ error: "Server API Key missing" }, { status: 500 });
+  }
 
   // 1. Get all users who have an ID (except the sender)
   const { data: users } = await supabase
@@ -41,7 +46,8 @@ export async function POST(req: Request) {
       include_player_ids: playerIds,
       headings: { en: author_name || "The Forge" },
       contents: { en: message },
-      url: "https://the-forge.vercel.app" // Change this to your actual URL when live
+      // Use your production URL, or localhost for testing
+      url: process.env.NODE_ENV === 'development' ? "http://localhost:3000" : "https://the-forge.vercel.app"
     })
   };
 

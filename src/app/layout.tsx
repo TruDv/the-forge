@@ -2,6 +2,7 @@ import './globals.css'
 import NavbarWrapper from '@/components/NavbarWrapper'
 import FooterWrapper from '@/components/FooterWrapper'
 import PushManager from '@/components/PushManager'
+import Script from 'next/script' // <--- 1. IMPORT THIS
 
 import type { Viewport } from 'next'
 
@@ -25,6 +26,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="scroll-smooth">
+      <head>
+        {/* <--- 2. ADD THIS SCRIPT TAG */}
+        <Script 
+          src="https://cdn.onesignal.com/sdks/OneSignalSDK.js" 
+          strategy="beforeInteractive" 
+        />
+      </head>
       <body className="bg-slate-50 min-h-screen font-sans antialiased flex flex-col">
         <PushManager />
 

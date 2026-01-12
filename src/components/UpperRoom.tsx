@@ -354,7 +354,7 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             className={`
               fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 overflow-hidden
               left-0 right-0 md:left-auto md:right-6 md:top-auto md:bottom-24
-              md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
+              md:w-[420px] md:h-[70vh] md:max-h-[850px] md:rounded-3xl md:border md:border-slate-200
               ${isFullPage 
                 ? 'inset-0 h-dvh' 
                 : 'bottom-0 top-[60px] md:top-auto md:bottom-24'
