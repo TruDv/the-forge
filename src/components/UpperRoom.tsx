@@ -363,8 +363,8 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             `}
             style={{
               // This is the key line — adjust 90px to match your bottom nav height
-              paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 10px))',
-              maxHeight: 'calc(100dvh - 60px)',
+              paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 10px))',
+              maxHeight: 'calc(100dvh - 56px)',
             }}
           >
             {/* TABS */}
