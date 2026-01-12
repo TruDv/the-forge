@@ -15,7 +15,6 @@ type RoomType = 'general' | 'fasting' | 'private';
 export default function UpperRoom({ user, profileName, isFullPage = false }: { user: any, profileName: string, isFullPage?: boolean }) {
   const router = useRouter();
 
-  // --- CORE STATE ---
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(isFullPage || false);
   const [messages, setMessages] = useState<any[]>([]);
@@ -24,14 +23,12 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [roomTopic, setRoomTopic] = useState("Encourage one another daily.");
   
-  // --- ROOM & DM STATE ---
   const [currentRoom, setCurrentRoom] = useState<RoomType>('general');
   const [fastingPreaching, setFastingPreaching] = useState("");
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null);
   const [hasNewDM, setHasNewDM] = useState(false);
 
-  // --- UI INTERACTION STATE ---
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -39,7 +36,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // --- AUDIO STATE ---
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -50,7 +46,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
   const sendAudioRef = useRef<HTMLAudioElement | null>(null);
   const receiveAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // --- KEYBOARD STATE ---
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const handleClose = () => {
@@ -66,7 +61,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     }
   }, [currentRoom]);
 
-  // Keyboard & viewport handling (auto-scroll focused, no translateY)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -81,14 +75,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
       if (keyboardActive) {
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }, 140);
+        }, 250);
       }
     };
 
     window.visualViewport?.addEventListener('resize', handleViewportChange);
     window.visualViewport?.addEventListener('scroll', handleViewportChange);
 
-    // Run once on mount
     handleViewportChange();
 
     document.body.style.overflow = 'hidden';
@@ -110,9 +103,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
   };
 
-  // ────────────────────────────────────────────────
-  // DATA FETCHING & REALTIME
-  // ────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
@@ -191,9 +181,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (!editingId) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, editingId, replyingTo]);
 
-  // ────────────────────────────────────────────────
-  // ACTIVE DM LIST
-  // ────────────────────────────────────────────────
   const [activeConversations, setActiveConversations] = useState<any[]>([]);
   useEffect(() => {
     const fetchActiveDMs = async () => {
@@ -215,9 +202,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     if (currentRoom === 'private') fetchActiveDMs();
   }, [currentRoom, messages, allUsers, user.id]);
 
-  // ────────────────────────────────────────────────
-  // CORE ACTIONS
-  // ────────────────────────────────────────────────
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !user || isSending) return;
@@ -279,9 +263,6 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
     setShowMentionList(false);
   };
 
-  // ────────────────────────────────────────────────
-  // AUDIO RECORDING
-  // ────────────────────────────────────────────────
   const getSupportedMimeType = () => {
     const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg", "audio/wav"];
     for (const type of types) {
@@ -369,17 +350,22 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
         <>
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 md:hidden" onClick={handleClose} />
 
-          {/* Main chat container – uses dvh for proper mobile height */}
           <div 
             className={`
               fixed z-50 bg-white flex flex-col shadow-2xl transition-all duration-200 overflow-hidden
               left-0 right-0 md:left-auto md:right-6 md:top-auto md:bottom-24
               md:w-[420px] md:h-[70vh] md:max-h-[750px] md:rounded-3xl md:border md:border-slate-200
               ${isFullPage 
-                ? 'top-0 h-dvh' 
-                : 'top-[60px] h-[calc(100dvh-60px)] md:bottom-24 md:top-auto md:h-[70vh]'
+                ? 'inset-0 h-dvh' 
+                : 'bottom-0 top-[60px] md:top-auto md:bottom-24'
               }
+              overscroll-y-none
             `}
+            style={{
+              // This is the key line — adjust 90px to match your bottom nav height
+              paddingBottom: 'calc(20px + env(safe-area-inset-bottom, 10px))',
+              maxHeight: 'calc(100dvh - 60px)',
+            }}
           >
             {/* TABS */}
             <div className="shrink-0 bg-slate-950 p-2">
@@ -550,7 +536,13 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
             </div>
 
             {/* INPUT AREA */}
-            <div className="shrink-0 p-4 bg-white border-t border-slate-100 relative z-30">
+            <div 
+              className="
+                shrink-0 p-4 bg-white border-t border-slate-100 relative z-30
+                pb-[calc(3rem + env(safe-area-inset-bottom, 3rem))]
+                md:pb-4
+              "
+            >
               {showMentionList && filteredUsers.length > 0 && (
                 <div className="absolute bottom-full left-4 mb-2 bg-white shadow-2xl rounded-2xl border w-64 max-h-48 overflow-y-auto z-50 overflow-x-hidden">
                   {filteredUsers.map(u => (
@@ -610,12 +602,16 @@ export default function UpperRoom({ user, profileName, isFullPage = false }: { u
                     value={newMessage} 
                     onChange={handleTextChange} 
                     placeholder="Write to the Forge..."
-                    className="flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32"
+                    className="
+                      flex-1 bg-slate-100 border-none rounded-2xl px-5 py-4 
+                      text-[16px] text-slate-900 font-bold outline-none resize-none max-h-32
+                      min-h-[56px] touch-manipulation
+                    "
                     rows={1}
                     onFocus={() => {
                       setTimeout(() => {
                         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                      }, 180);
+                      }, 250);
                     }}
                   />
                   {newMessage.trim() ? (
