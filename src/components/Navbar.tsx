@@ -554,22 +554,50 @@ export default function Navbar() {
               )}
             </button>
 
-            {/* --- NEW BUTTON ADDED HERE --- */}
-            <button
-                onClick={() => {
-                    const w = window as any;
-                    if (w.OneSignal) {
-                        w.OneSignal.push(() => {
-                            w.OneSignal.showNativePrompt();
-                        });
-                    } else {
-                        alert("OneSignal not loaded yet. Check console.");
-                    }
-                }}
-                className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full hover:bg-indigo-700 transition-colors ml-1"
-            >
-                Enable Notifs
-            </button>
+{/* --- DEBUG BUTTON --- */}
+<button
+    onClick={async () => {
+        const w = window as any;
+        const permission = Notification.permission;
+        const isLoaded = !!w.OneSignal;
+        
+        // 1. Alert the Status
+        alert(`DIAGNOSTIC REPORT:\n
+        - OneSignal Loaded: ${isLoaded ? "YES" : "NO (Check Script)"}
+        - Permission Status: ${permission}
+        - Protocol: ${window.location.protocol} (Must be https or localhost)
+        `);
+
+        if (!isLoaded) return;
+
+        // 2. If already granted, force save the ID
+        if (permission === 'granted') {
+             w.OneSignal.push(async () => {
+                 const userId = await w.OneSignal.getUserId();
+                 alert(`You are ALREADY subscribed!\nUser ID: ${userId}`);
+                 if (userId) {
+                     // Force save to Supabase
+                     const { data: { session } } = await supabase.auth.getSession();
+                     if (session) {
+                         await supabase.from('profiles').update({ onesignal_id: userId }).eq('id', session.user.id);
+                         alert("ID Saved to Database!");
+                     }
+                 }
+             });
+        } 
+        // 3. If not granted, try to show prompt
+        else {
+            w.OneSignal.push(() => {
+                w.OneSignal.showNativePrompt(); // The Slide Prompt
+                w.OneSignal.registerForPushNotifications(); // The Browser Prompt
+                alert("Prompt requested...");
+            });
+        }
+    }}
+    className="bg-red-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full hover:bg-red-700 transition-colors ml-1"
+>
+    TEST NOTIFICATIONS
+</button>
 
             {/* PROFILE */}
             <Link href="/profile" className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-900 border-2 border-white shadow-sm flex items-center justify-center text-[10px] font-black text-white hover:scale-105 transition-transform cursor-pointer">
