@@ -382,7 +382,7 @@ export default function Home() {
 
       {/* Scrolling Area */}
       <div className="flex-1 overflow-hidden relative bg-slate-900 flex items-center">
-         <div className="whitespace-nowrap animate-marquee flex items-center hover:[animation-play-state:paused]" style={{ animationDuration: '700s' }}>
+         <div className="whitespace-nowrap animate-marquee flex items-center hover:[animation-play-state:paused]" style={{ animationDuration: '1800s' }}>
             {[...announcements, ...announcements, ...announcements].map((item, i) => (
                <span key={i} className="flex items-center mx-4 md:mx-6">
                   <Circle size={5} className="text-orange-500 fill-orange-500 mr-2 md:mr-3 flex-shrink-0" />
