@@ -113,3 +113,24 @@ body {
 .pb-safe-area {
   padding-bottom: calc(1rem + var(--safe-area-inset-bottom));
 }
+
+/* --- THE FORGE UTILITIES --- */
+
+@layer utilities {
+  /* This hides the scrollbar while allowing functionality */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  /* Optional: Smooth snap-scrolling for the carousel */
+  .snap-x {
+    scroll-snap-type: x mandatory;
+  }
+  .snap-start {
+    scroll-snap-align: start;
+  }
+}
