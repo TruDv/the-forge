@@ -9,8 +9,25 @@ import {
 } from 'lucide-react';
 
 export default function FastingPage() {
-  const fastStartDate = 12; 
-  const [selectedDay, setSelectedDay] = useState(1);
+  const fastStartDate = 12; // January 12th, 2026
+  
+  // --- FIX 1: Logic to calculate "Today's" fast day ---
+  const calculateCurrentFastDay = () => {
+    const today = new Date();
+    const start = new Date(2026, 0, fastStartDate); // Jan 12, 2026
+    
+    // Calculate difference in days
+    const diffTime = today.getTime() - start.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    
+    // Return current day, but clamp it between 1 and 21
+    if (diffDays < 1) return 1;
+    if (diffDays > 21) return 21;
+    return diffDays;
+  };
+
+  // Initialize state with the actual current day
+  const [selectedDay, setSelectedDay] = useState(calculateCurrentFastDay());
   const [dailyFocus, setDailyFocus] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [journalLogs, setJournalLogs] = useState<any[]>([]);
@@ -22,6 +39,9 @@ export default function FastingPage() {
 
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const fastDays = Array.from({ length: 21 }, (_, i) => i + 1);
+
+  // --- FIX 2: Added 'Today' indicator logic ---
+  const todayDayNumber = calculateCurrentFastDay();
 
   const getWeeklyTopic = (day: number) => {
     if (day <= 7) return { title: "Week 1: Consecration", focus: "Knowing God" };
@@ -81,12 +101,6 @@ export default function FastingPage() {
     setIsSavingJournal(false);
   };
 
-  const getCalendarDate = (dayNum: number) => fastStartDate + dayNum - 1;
-  const getDayName = (dayNum: number) => {
-    const date = new Date(2026, 0, getCalendarDate(dayNum));
-    return weekdays[date.getDay()];
-  };
-
   const scrollToArchive = () => {
     document.getElementById('journal-archive')?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -97,38 +111,10 @@ export default function FastingPage() {
   };
 
   return (
-    /* ADDED bg-white and min-h-screen to force background color on mobile */
     <main className="min-h-screen bg-white text-slate-900">
       <div className="max-w-5xl mx-auto px-6 py-12">
       
-      {/* JOURNAL MODAL */}
-      {isJournalModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-xl rounded-[32px] overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="bg-orange-500 p-6 text-white flex justify-between items-center">
-              <h2 className="text-xl font-black uppercase italic tracking-tighter">Day {selectedDay} Journal</h2>
-              <button onClick={() => setIsJournalModalOpen(false)} className="bg-white/20 rounded-full p-1"><X size={20}/></button>
-            </div>
-            <div className="p-6">
-              <textarea 
-                placeholder={`What is God saying to you on Day ${selectedDay}?`} 
-                className="w-full h-48 bg-slate-50 p-5 rounded-2xl border border-slate-200 outline-none font-serif italic text-lg mb-4 text-slate-800 resize-none focus:border-orange-500 focus:bg-white transition-all"
-                value={journalNote}
-                onChange={(e) => setJournalNote(e.target.value)}
-              />
-              <button 
-                onClick={handleSaveJournal} 
-                disabled={isSavingJournal}
-                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase hover:bg-orange-600 transition-all flex items-center justify-center gap-2"
-              >
-                {isSavingJournal ? <Loader2 className="animate-spin" size={16} /> : "Save Reflection"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- FULL SPIRITUAL JOURNEY MODAL --- */}
+{/* --- FULL SPIRITUAL JOURNEY MODAL --- */}
       {isVisionOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-[40px] shadow-2xl relative border border-slate-200 animate-in fade-in zoom-in duration-300">
@@ -356,6 +342,7 @@ export default function FastingPage() {
           </div>
         </div>
 
+
         {/* Protocol Sidebar */}
         <div className="bg-slate-900 rounded-3xl p-8 text-white">
           <h3 className="font-bold text-lg mb-6 flex items-center gap-2 text-indigo-400 uppercase italic tracking-tighter">
@@ -403,7 +390,6 @@ export default function FastingPage() {
           <h2 className="text-3xl md:text-4xl font-black leading-tight uppercase italic tracking-tighter">
             {dailyFocus?.title || `Day ${selectedDay}: ${currentTopic.focus}`}
           </h2>
-          {/* Explicit white text for scripture */}
           <p className="mt-4 text-white text-xl md:text-2xl font-serif italic border-l-4 border-orange-500 pl-4">
             {dailyFocus?.scripture || 'Scripture loading...'}
           </p>
@@ -411,7 +397,6 @@ export default function FastingPage() {
         
         <div className="p-8 md:p-12 bg-white relative">
           <Quote className="absolute top-4 right-8 text-slate-50 w-24 h-24 -z-0" />
-          {/* High contrast text for the devotional body */}
           <p className="relative z-10 text-slate-800 leading-relaxed text-xl md:text-2xl font-serif">
             {dailyFocus?.devotional ? `"${dailyFocus.devotional}"` : `Take time today to meditate on the theme of ${currentTopic.focus.toUpperCase()}.`}
           </p>
